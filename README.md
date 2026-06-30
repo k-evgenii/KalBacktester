@@ -50,48 +50,44 @@ contract's `MarketSpec`.
 ---
 
 ## Screenshots
-**Repository layout**
-<br>
-![alt text](img/layout.png)
 
 **Demo mode** — the full UI on synthetic data (click **Demo**, no backend needed).
 A quick way to see the layout before wiring up real data.
 
-![Demo mode](img/demo.png)
+![Demo mode](docs/img/demo.png)
 
 **Price · Vol** — candlesticks for the contract chosen in the header dropdown, plus a
 volume histogram. Each contract is one temperature bracket; the selector keeps the
 chart to a single contract at a time.
 
-![Price and volume](img/price_volume.png)
+![Price and volume](docs/img/price_volume.png)
 
 The analysis tabs, from one real run (New York, June 2026):
 
 **P&L** — realized cumulative equity, one point per settled day. The early dip below
 zero is a real drawdown; the climb back is the "good" half of the same run.
 
-![P&L curve](img/pnl.png)
+![P&L curve](docs/img/pnl.png)
 
 **Drawdown** — distance below the running equity peak (how far underwater, and for how
 long).
 
-![Drawdown](img/drawdown.png)
+![Drawdown](docs/img/drawdown.png)
 
 **Position** — net open contracts; sawtooths between 0 and 1 because each event settles
 same-day (it no longer ladders upward).
 
-![Net position](img/position.png)
+![Net position](docs/img/position.png)
 
 **Fees** — cumulative Kalshi fees across the run.
 
-![Fees](img/fees.png)
+![Fees](docs/img/fees.png)
 
 ---
 
 ## Project layout
 
-![Repo tree](img/repo_tree.png)
-
+![Repo tree](docs/img/layout.png)
 ```
 KalBacktester/
 ├── kbt/                     # the engine package
