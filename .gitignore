@@ -1,0 +1,39 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.ipynb_checkpoints/
+.vscode/
+.idea/
+outputs/*
+!outputs/.gitkeep
+
+# Data (large, raw, environment-specific)
+data/raw/
+data/processed/
+
+# Backtest outputs
+*.csv
+*.log
+
+#Strategies folder
+kbt/strategies/*
+
+#Attached strategies
+
+# Python packaging
+dist/
+build/
+*.egg-info/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# macOS
+.DS_Store
+
+# Temp
+*.zip
+.tmp/
