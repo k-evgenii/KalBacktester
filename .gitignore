@@ -12,6 +12,11 @@ outputs/*
 data/raw/
 data/processed/
 
+
+data/
+*.db
+*.sqlite
+
 # Backtest outputs
 *.csv
 *.log
@@ -37,3 +42,6 @@ htmlcov/
 # Temp
 *.zip
 .tmp/
+
+#secrets
+.env

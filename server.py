@@ -229,8 +229,16 @@ async def stream_backtest(ws, conn_id: int, msg: dict) -> None:
         await send(ws, {"type": "error", "message": f"strategy load failed: {e}"})
         return
 
+    # per-run quantity override from the UI (contracts per trade; default 1)
+    try:
+        qty = max(1, int(msg.get("qty", 1)))
+    except (TypeError, ValueError):
+        qty = 1
+    if hasattr(strategy, "quantity"):
+        strategy.quantity = qty
+
     await send(ws, {"type": "log", "ts": d0.isoformat(), "level": "info",
-                    "message": f"Loaded {strategy.name}"})
+                    "message": f"Loaded {strategy.name}  (qty={qty})"})
 
     # event-days in range
     try:

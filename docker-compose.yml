@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    container_name: kbt4-db
+    restart: unless-stopped
+
+    # Credentials come from .env, never from this file. You will move this to a
+    # server later; hardcoding now means rotating secrets in git history then.
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-kbt4}
+      POSTGRES_USER:     ${POSTGRES_USER:-kbt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Fail on any non-UTC assumption sneaking in.
+      TZ: UTC
+      PGTZ: UTC
+
+    # Bound to loopback only. When this moves to a server it goes behind the
+    # server's firewall or a WireGuard tunnel -- never 0.0.0.0:5432 on a public
+    # box. That is one of the most-scanned ports on the internet.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      - kbt4_pgdata:/var/lib/postgresql/data
+      # Everything in here runs ONCE, on first init of an empty data volume,
+      # in FILENAME ORDER -- hence the numeric prefixes. Editing these files
+      # later does nothing until you drop the volume. After the first run,
+      # use numbered migrations instead.
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./sql/results.sql:/docker-entrypoint-initdb.d/02_results.sql:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kbt} -d ${POSTGRES_DB:-kbt4}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kbt4_pgdata:

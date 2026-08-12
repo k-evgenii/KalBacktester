@@ -631,6 +631,9 @@ option { background: var(--sf2) }
   <span class="date-sep">→</span>
   <input type="date" class="t-date" id="dateEnd" disabled title="End date">
 
+  <input type="number" class="t-date" id="qty" min="1" step="1" value="1"
+    title="Contracts per trade" style="width:64px;text-align:center">
+
   <div class="spacer"></div>
   <button class="btn-demo" id="btnDemo">Demo</button>
   <button class="btn-run" id="btnRun" disabled>▶ Run</button>
@@ -1315,6 +1318,7 @@ async function startRun() {
       city: selCityKey, series: selSeries,
       start_date: document.getElementById('dateStart').value,
       end_date:   document.getElementById('dateEnd').value,
+      qty: Math.max(1, parseInt(document.getElementById('qty').value, 10) || 1),
       strategy_ref: selectedStrategy }));
   } catch(e) { onError('send failed: '+e.message) }
 }
