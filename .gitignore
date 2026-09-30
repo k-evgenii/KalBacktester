@@ -12,6 +12,8 @@ outputs/*
 data/raw/
 data/processed/
 
+notebooks_proto/
+
 
 data/
 *.db
@@ -45,3 +47,4 @@ htmlcov/
 
 #secrets
 .env
+

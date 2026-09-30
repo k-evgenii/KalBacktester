@@ -1,0 +1,87 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1.7cm]{geometry}
+\usepackage{booktabs,tabularx}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\pagestyle{empty}
+
+\begin{document}
+\begin{center}
+  {\Large\bfseries Market Candles and Weather Forecasts: Data Availability}\\[3pt]
+  Latest evidence reviewed: 7 September 2026
+\end{center}
+
+\textbf{Market candles.}
+The saved Kalshi daily-high-temperature probe finds traded daily candles for
+25 of 47 discovered series. It combines live and historical market listings,
+selects the highest-volume contract for each event-day, and requests
+1440-minute candles. The earliest successful event-dates are below; these are
+event labels, not necessarily the UTC dates on which trading began.
+
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+First event-date found & Series (each suffix below has the prefix \texttt{KXHIGH}) \\
+\midrule
+2021-08-06 & \texttt{NY} (New York) \\
+2021-08-19 & \texttt{CHI} (Chicago) \\
+2023-05-11 & \texttt{AUS, MIA} (Austin, Miami) \\
+2024-11-20 & \texttt{DEN, HOU, PHIL} (Denver, Houston, Philadelphia) \\
+2025-01-05 & \texttt{LAX} (Los Angeles) \\
+2026-01-14 & \texttt{TDC, TLV, TNOLA, TSEA, TSFO} \\
+2026-02-04 & \texttt{TATL, TMIN, TPHX} \\
+2026-02-05 & \texttt{TBOS} \\
+2026-02-11 & \texttt{TDAL, THOU, TOKC, TSATX} \\
+2026-08-19 & \texttt{TSAN} \\
+2026-08-26 & \texttt{TEWR, TTTN} \\
+2026-08-28 & \texttt{TSDF} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The saved results reflect a limit-only search: it stops at the first successful
+day per series. Consequently, its \texttt{newest\_event\_day\_with\_candle} field
+repeats the first date and \textbf{does not establish the latest available candle}.
+The other 22 series have no successful sample in this probe. Neither complete
+daily coverage nor availability for every contract or intraday interval was
+verified.
+
+\textbf{Weather forecasts.}
+The project uses Open-Meteo's Previous Runs API for hourly 2-metre temperature
+forecasts at fixed lead times. The provider documents coverage from
+\textbf{January 2024 for most models}, with later starts for some models;
+\textbf{GFS temperature extends to March 2021}, and JMA GSM/MSM to 2018.
+These are provider-stated archive bounds, not locally probed first dates.
+Offsets of 1--7 days represent forecasts made 24--168 hours before valid time,
+subject to each model's forecast horizon.\footnote{Open-Meteo,
+\href{https://open-meteo.com/en/docs/previous-runs-api#data-availability}{Previous Runs API: Data Availability and API Documentation},
+accessed 7 September 2026.}
+
+The local forecast dataset covers \textbf{1--30 June 2026}, with its latest
+valid timestamp at \textbf{30 June 2026, 23:00 UTC}, for New York, Los Angeles,
+and Miami. Nine of ten requested models returned data; ECMWF AIFS returned
+only missing values. Available positive lead offsets reach 7 days for IFS,
+GFS, GEM, JMA and NBM; 6 for ICON and UKMO; 3 for M\'et\'eo-France; and 1 for
+HRRR. Some combinations have gaps. This local end date is the requested
+download boundary, not an API archive cutoff; the newest provider timestamp
+has not been measured here.
+
+\textbf{Backtest implication.}
+The earliest candidate overlap depends on both city and model: New York/GFS
+can potentially extend to August 2021, while a multi-model study generally
+starts in 2024 or later. Including Los Angeles moves the market-side start
+to 5 January 2025. These are candidate bounds pending forecast and candle
+coverage checks. Use positive forecast leads and verify information was
+available before the simulated trade; lead zero is diagnostic only.
+
+{\footnotesize
+\textbf{Local evidence (paths relative to repository root):}
+\path{notebooks_proto/probe_kalshi_daily_high_limits.py};
+\path{notebooks_proto/out/kalshi_daily_high_probe/series_summary.json};
+\path{data/processed/forecasts/coverage.csv};
+\path{data/processed/forecasts/hourly_temp.parquet}.
+}
+\end{document}
