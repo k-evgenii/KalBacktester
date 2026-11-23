@@ -108,7 +108,7 @@ with tempfile.TemporaryDirectory() as tmp:
     warns = [c["id"] for c in rep["checks"] if c["severity"] == "WARN" and c["status"] == "fail"]
     print(f"  untouched copy: verdict {rep['verdict']}, failed WARN checks {warns}")
     ids = [c["id"] for c in rep["checks"]]
-    expected_ids = list(range(1, 8)) + list(range(9, 17)) + list(range(18, 22))
+    expected_ids = list(range(1, 8)) + list(range(9, 17)) + list(range(18, 24))
     valid = all(c["severity"] in ("BLOCK", "WARN") and c["status"] in ("pass", "fail", "skipped")
                 for c in rep["checks"])
     report("1 untouched copy is PASS and the report lists every check once",
@@ -309,6 +309,40 @@ with tempfile.TemporaryDirectory() as tmp:
         conn.rollback()
         report("15 unsettled market with missing keys is BLOCK, check 9, no crash", False,
                f"run_checks raised {type(error).__name__}: {error}")
+
+# Test 16 (spec 010): untouched copy passes and checks 22 and 23 are "pass"
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    rep = run_checks(copy, conn)
+    statuses = {i: checks_by_id(rep).get(i, {}).get("status") for i in (22, 23)}
+    report("16 untouched copy is PASS and checks 22 and 23 pass",
+           rep["verdict"] == "PASS" and all(s == "pass" for s in statuses.values()),
+           f"verdict {rep['verdict']}, statuses {statuses}")
+
+# Test 17 (spec 010): another station code in one market's rules
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("(CLINYC)", "(CLIMDW)")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: rules_primary (CLINYC) -> (CLIMDW)")
+    rep = run_checks(copy, conn)
+    examples = checks_by_id(rep).get(22, {}).get("examples", [])
+    names_market = any(target["ticker"] in e for e in examples)
+    report("17 wrong station in rules is BLOCK, check 22 names the market",
+           rep["verdict"] == "BLOCK" and failed(rep, 22) and names_market,
+           f"verdict {rep['verdict']}, check 22 {checks_by_id(rep).get(22)}")
+
+# Test 18 (spec 010): another settlement source in one market's rules
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("The Weather Company", "the National Weather Service")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: rules_primary The Weather Company -> the National Weather Service")
+    expect_block("18 wrong settlement source is BLOCK, check 23", run_checks(copy, conn), [23])
 
 conn.rollback()
 conn.close()
