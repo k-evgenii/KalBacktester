@@ -1,9 +1,11 @@
 """Load the one-week KXHIGHNY dump (api_probe/kalshi/KXHIGHNY/) into the reconciliation database.
 
-Run from the repo root: uv run python -m ingest.load_kxhighny_dump
+Run from the repo root: uv run python -m ingest.load_kxhighny_dump [dump_dir]
+The QA gate runs first; on BLOCK nothing is inserted.
 Safe to run twice: every insert is ON CONFLICT DO NOTHING.
 """
 import json
+import sys
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -39,12 +41,20 @@ def event_date(event_ticker):
     return datetime.strptime(event_ticker.split("-")[1], "%y%b%d").date()
 
 
-def main():
-    markets = json.loads((DUMP_DIR / "markets.json").read_text())["markets"]
+def main(dump_dir=DUMP_DIR):
+    markets = json.loads((dump_dir / "markets.json").read_text())["markets"]
     event_tickers = sorted({m["event_ticker"] for m in markets})
     inserted = {}
 
     with connect() as conn, conn.cursor() as cur:
+        from ingest.qa_kxhighny_dump import run_checks  # import here, not at the top: the gate imports this module
+
+        report = run_checks(dump_dir, conn)
+        (dump_dir / "_qa_report.json").write_text(json.dumps(report, indent=2, default=str))
+        if report["verdict"] != "PASS":
+            print("QA gate: BLOCK, nothing inserted. See _qa_report.json in the dump folder.")
+            sys.exit(1)
+
         cur.execute(
             "INSERT INTO underlying (underlying_id, description) VALUES (%s, %s) "
             "ON CONFLICT DO NOTHING",
@@ -90,7 +100,7 @@ def main():
 
         inserted["candle"] = 0
         for m in markets:
-            bars_file = DUMP_DIR / "bars_1min" / f"{m['ticker']}.json"
+            bars_file = dump_dir / "bars_1min" / f"{m['ticker']}.json"
             bars = json.loads(bars_file.read_text())["candlesticks"]
             rows = [candle_row(m["ticker"], bar) for bar in bars]
             cur.executemany(
@@ -107,4 +117,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(Path(sys.argv[1]) if len(sys.argv) > 1 else DUMP_DIR)
