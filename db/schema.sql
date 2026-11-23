@@ -440,10 +440,10 @@ CREATE TABLE forecast_hourly (
     PRIMARY KEY (station_id, model, valid_time, lead_day),
     CHECK (lead_day BETWEEN 0 AND 7),
     CHECK (temp_f IS NULL OR temp_f BETWEEN -80 AND 140),
-    CHECK (cloud_cover_pct IS NULL OR cloud_cover_pct BETWEEN 0 AND 100),
-    CHECK (wind_speed_mph IS NULL OR wind_speed_mph >= 0),
-    CHECK (precip_in IS NULL OR precip_in >= 0),
-    CHECK (shortwave_wm2 IS NULL OR shortwave_wm2 >= 0)
+    CHECK (cloud_cover_pct IS NULL OR cloud_cover_pct BETWEEN 0 AND 100)
+    -- No ">= 0" rule on wind, precipitation or radiation: models return small negative
+    -- values (GEM radiation down to -56 W/m2, JMA precipitation -0.004 in). They are
+    -- stored as returned; cleaning belongs to whatever computes features from them.
 );
 
 -- Append-only, same guard as the other append-only tables
@@ -511,6 +511,6 @@ COMMENT ON COLUMN forecast_hourly.lead_day IS 'The value was predicted 24 hours 
 COMMENT ON COLUMN forecast_hourly.temp_f IS 'Forecast air temperature in degrees Fahrenheit, -80 to 140; null if missing.';
 COMMENT ON COLUMN forecast_hourly.dewpoint_f IS 'Forecast dew point in degrees Fahrenheit; null if missing.';
 COMMENT ON COLUMN forecast_hourly.cloud_cover_pct IS 'Forecast cloud cover in percent, 0 to 100; null if missing.';
-COMMENT ON COLUMN forecast_hourly.wind_speed_mph IS 'Forecast wind speed in miles per hour, 0 or more; null if missing.';
-COMMENT ON COLUMN forecast_hourly.precip_in IS 'Forecast precipitation in inches, 0 or more; null if missing.';
-COMMENT ON COLUMN forecast_hourly.shortwave_wm2 IS 'Forecast shortwave radiation in watts per square metre, 0 or more; null if missing.';
+COMMENT ON COLUMN forecast_hourly.wind_speed_mph IS 'Forecast wind speed in miles per hour, as returned by the model; null if missing.';
+COMMENT ON COLUMN forecast_hourly.precip_in IS 'Forecast precipitation in inches, as returned by the model (can be slightly negative); null if missing.';
+COMMENT ON COLUMN forecast_hourly.shortwave_wm2 IS 'Forecast shortwave radiation in watts per square metre, as returned by the model (can be negative); null if missing.';

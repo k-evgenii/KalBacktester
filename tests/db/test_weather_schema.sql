@@ -73,16 +73,7 @@ BEGIN
             VALUES ('KTST', 'm', '2026-06-01 12:00+00', 1, 200)$q$),
         ('forecast_hourly cloud cover 120',
          $q$INSERT INTO forecast_hourly (station_id, model, valid_time, lead_day, cloud_cover_pct)
-            VALUES ('KTST', 'm', '2026-06-01 12:00+00', 1, 120)$q$),
-        ('forecast_hourly negative wind',
-         $q$INSERT INTO forecast_hourly (station_id, model, valid_time, lead_day, wind_speed_mph)
-            VALUES ('KTST', 'm', '2026-06-01 12:00+00', 1, -1)$q$),
-        ('forecast_hourly negative precipitation',
-         $q$INSERT INTO forecast_hourly (station_id, model, valid_time, lead_day, precip_in)
-            VALUES ('KTST', 'm', '2026-06-01 12:00+00', 1, -0.1)$q$),
-        ('forecast_hourly negative radiation',
-         $q$INSERT INTO forecast_hourly (station_id, model, valid_time, lead_day, shortwave_wm2)
-            VALUES ('KTST', 'm', '2026-06-01 12:00+00', 1, -1)$q$)
+            VALUES ('KTST', 'm', '2026-06-01 12:00+00', 1, 120)$q$)
     ) AS t(label, stmt)
     LOOP
         BEGIN
@@ -110,6 +101,16 @@ BEGIN
     VALUES ('KTST', 'edge', '2026-01-01 00:00+00', 0, -80, 0, 0, 0, 0),
            ('KTST', 'edge', '2026-01-01 00:00+00', 7, 140, 100, 0, 0, 0);
     RAISE NOTICE 'PASS: boundary values accepted in all three weather tables';
+END $$;
+
+-- Forecast values are stored as the model returned them (user decision 2026-11-23):
+-- negative wind, precipitation and radiation are accepted in forecast_hourly.
+DO $$
+BEGIN
+    INSERT INTO forecast_hourly (station_id, model, valid_time, lead_day,
+                                 wind_speed_mph, precip_in, shortwave_wm2)
+    VALUES ('KTST', 'negatives', '2026-06-01 12:00+00', 1, -1, -0.004, -56);
+    RAISE NOTICE 'PASS: negative forecast wind, precipitation and radiation are stored as returned';
 END $$;
 
 -- ---------------------------------------------------------------------------

@@ -177,3 +177,12 @@ Lead's note (2026-11-23): `tests/db/test_schema.sql` test 1 listed exactly the 1
 its expected list now includes the 4 weather tables (expected value updated, nothing weakened).
 
 If anything here is unclear or looks wrong: stop and report, do not guess.
+
+## Change after approval (user decision 2026-11-23, during unit 009)
+The first real load hit model artefacts: GEM solar radiation down to -56 W/m2 (5 values) and JMA
+precipitation of -0.004 in (12 values), out of 65,280 forecast values for the KNYC week. The user
+chose to store forecasts exactly as returned. The three `>= 0` CHECKs on
+`forecast_hourly.wind_speed_mph`, `precip_in` and `shortwave_wm2` were removed from
+`db/schema.sql` and dropped from the live database; observation rules are unchanged. In
+`tests/db/test_weather_schema.sql` the three "refuses negative forecast value" cases were replaced
+by one case asserting such values are accepted (44 PASS).

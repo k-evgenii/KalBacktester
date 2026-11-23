@@ -17,10 +17,13 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 
 | # | Track | Unit | Branch / chat | State |
 |---|---|---|---|---|
-| 002 | A ingestion | one-week KXHIGHNY raw dump (`api_probe/kalshi/dump_kxhighny.py`) | dev / lead chat | approved by reviewer, verified by lead; not committed |
-| 003 | A ingestion | load the one-week dump into the database (`ingest/load_kxhighny_dump.py`); 5 quantity columns made numeric | dev / lead chat | approved by reviewer, verified by lead; not committed |
-| 006 | A ingestion | one-week weather dump for KNYC (`api_probe/weather/dump_weather.py`) | dev / lead chat | approved by reviewer, verified by lead; not committed |
-| 007 | A ingestion | weather tables + KNYC seed (`db/schema.sql`, `db/seed_stations.sql`) | dev / lead chat | approved by user, verified by lead; applied to live db; not committed |
+| 002 | A ingestion | one-week KXHIGHNY raw dump (`api_probe/kalshi/dump_kxhighny.py`) | dev / lead chat | done, commit 230d69c |
+| 003 | A ingestion | load the one-week dump into the database (`ingest/load_kxhighny_dump.py`); 5 quantity columns made numeric | dev / lead chat | done, commit 230d69c |
+| 006 | A ingestion | one-week weather dump for KNYC (`api_probe/weather/dump_weather.py`) | dev / lead chat | done, commit f500ee8 |
+| 007 | A ingestion | weather tables + KNYC seed (`db/schema.sql`, `db/seed_stations.sql`) | dev / lead chat | done, commit f500ee8 |
+| 004 | B | ingestion QA gate in front of the KXHIGHNY loader (`ingest/qa_kxhighny_dump.py`) | track-b | done, commit 3b38375 (merged into dev) |
+| 008 | B | settled markets frozen in the database (`market_guard`) | track-b | done, commit bfcb256 (merged into dev) |
+| 009 | A ingestion | load the weather dump (`ingest/load_weather_dump.py`); forecast CHECKs relaxed by user decision | dev / lead chat | approved by reviewer, verified by lead; not committed |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
