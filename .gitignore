@@ -24,7 +24,7 @@ data/
 *.log
 
 #Strategies folder
-kbt/strategies/*
+legacy/kbt/strategies/*
 
 #Attached strategies
 
@@ -48,3 +48,6 @@ htmlcov/
 #secrets
 .env
 
+
+# legacy data symlink
+legacy/data
