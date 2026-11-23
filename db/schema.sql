@@ -36,6 +36,27 @@ BEGIN
 END;
 $$;
 
+-- market guard: an open market may be updated (not its ticker or event_ticker);
+-- a settled market cannot be changed; DELETE is refused.
+CREATE FUNCTION market_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'DELETE on market is not allowed'
+            USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF OLD.is_settled THEN
+        RAISE EXCEPTION 'market % is settled and can no longer be changed', OLD.ticker
+            USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.ticker <> OLD.ticker OR NEW.event_ticker <> OLD.event_ticker THEN
+        RAISE EXCEPTION 'a market''s ticker and event cannot change'
+            USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 1. underlying
 -- ---------------------------------------------------------------------------
@@ -80,6 +101,7 @@ CREATE TABLE market (
     close_time   timestamptz NOT NULL,
     result       text,
     settled_at   timestamptz,
+    is_settled   boolean GENERATED ALWAYS AS (result IS NOT NULL) STORED,
     CHECK (result IS NULL OR result IN ('yes', 'no')),
     CHECK ((result IS NULL) = (settled_at IS NULL)),
     CHECK (floor_strike IS NULL OR cap_strike IS NULL OR floor_strike <= cap_strike),
@@ -228,6 +250,14 @@ CREATE TRIGGER position_snapshot_no_truncate
     BEFORE TRUNCATE ON position_snapshot
     FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
+-- Triggers: market
+CREATE TRIGGER market_guard
+    BEFORE UPDATE OR DELETE ON market
+    FOR EACH ROW EXECUTE FUNCTION market_guard();
+CREATE TRIGGER market_no_truncate
+    BEFORE TRUNCATE ON market
+    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
 -- Triggers: run
 CREATE TRIGGER run_guard
     BEFORE UPDATE OR DELETE ON run
@@ -270,6 +300,7 @@ COMMENT ON COLUMN market.open_time IS 'When trading in the market opens (UTC).';
 COMMENT ON COLUMN market.close_time IS 'When trading in the market closes (UTC).';
 COMMENT ON COLUMN market.result IS 'Settlement result, yes or no; null until settled.';
 COMMENT ON COLUMN market.settled_at IS 'When the market settled (UTC); null until settled.';
+COMMENT ON COLUMN market.is_settled IS 'true once the market has a result; settled markets can no longer be changed (trigger market_guard)';
 
 -- candle
 COMMENT ON TABLE  candle IS 'Quote bar per market and bar end time; append-only.';

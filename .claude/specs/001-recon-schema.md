@@ -49,6 +49,7 @@ candles (crossed quotes can occur in real data; recon reports them instead).
    CHECK `(result IS NULL) = (settled_at IS NULL)`;
    CHECK `floor_strike IS NULL OR cap_strike IS NULL OR floor_strike <= cap_strike`;
    CHECK `open_time < close_time`.
+   Note (spec 008): adds generated column `is_settled` and trigger `market_guard`; settled markets are frozen.
 5. `candle`: `market_ticker text FK -> market`, `ts timestamptz` (bar end, UTC),
    `yes_bid numeric` nullable, `yes_ask numeric` nullable, `volume numeric`;
    `PRIMARY KEY (market_ticker, ts)`;
@@ -200,6 +201,9 @@ END $$;
 constraints and the compose file. The tables themselves are redesigned, not copied.
 
 ## Done when
+(Note 2026-11-23: once real data is loaded, run these tests on a throwaway database built from
+`db/schema.sql`, not on `kalbt-recon-db`; see `db/README.md`.)
+
 Run by the lead (the worktree has no `.env`; it is passed from the main checkout):
 1. `docker compose --env-file ../KalBacktester/.env up -d` and the container reports healthy.
 2. `docker exec -i kalbt-recon-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < tests/db/test_schema.sql`

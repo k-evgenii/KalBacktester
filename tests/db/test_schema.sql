@@ -544,14 +544,99 @@ INSERT INTO order_intent (run_id, decided_at, market_ticker, side, action, quant
 SELECT run_id, '2026-06-01 12:00+00', 'KXHIGHNY-26JUN01-T80', 'no', 'buy', 5, 'fk-only-case'
 FROM run;
 
+-- Spec 008: market_guard now refuses every DELETE on market and fires before the foreign key
+-- is checked, so the usual error is restrict_violation. foreign_key_violation is also accepted:
+-- either one proves the delete was refused.
 DO $$ BEGIN
     BEGIN
         DELETE FROM market WHERE ticker = 'KXHIGHNY-26JUN01-T80';
         RAISE EXCEPTION 'FAIL: delete of a market referenced by an order_intent was accepted';
-    EXCEPTION WHEN foreign_key_violation THEN
+    EXCEPTION WHEN restrict_violation OR foreign_key_violation THEN
         RAISE NOTICE 'PASS: delete of a market referenced by an order_intent refused';
     END;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 11 (spec 008): settled markets are frozen, open markets stay editable
+-- ---------------------------------------------------------------------------
+-- 11a: an open market can be updated
+INSERT INTO market (ticker, event_ticker, open_time, close_time)
+VALUES ('KXHIGHNY-26JUN01-T85', 'KXHIGHNY-26JUN01', '2026-05-31 15:00+00', '2026-06-02 04:59+00');
+
+DO $$
+DECLARE
+    new_close timestamptz;
+BEGIN
+    UPDATE market SET close_time = '2026-06-02 05:30+00'
+    WHERE ticker = 'KXHIGHNY-26JUN01-T85'
+    RETURNING close_time INTO new_close;
+    IF new_close IS DISTINCT FROM '2026-06-02 05:30+00'::timestamptz THEN
+        RAISE EXCEPTION 'FAIL: update of an open market did not apply';
+    END IF;
+    RAISE NOTICE 'PASS: open market can be updated';
+EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL: update of an open market failed (%)', SQLERRM;
+END $$;
+
+-- 11b: an open market can be settled, and is_settled becomes true
+DO $$
+DECLARE
+    settled boolean;
+BEGIN
+    UPDATE market SET result = 'yes', settled_at = '2026-06-02 12:00+00'
+    WHERE ticker = 'KXHIGHNY-26JUN01-T85'
+    RETURNING is_settled INTO settled;
+    IF settled IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'FAIL: settled market has is_settled %, expected true', settled;
+    END IF;
+    RAISE NOTICE 'PASS: open market can be settled and is_settled becomes true';
+EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL: settling an open market failed (%)', SQLERRM;
+END $$;
+
+-- 11c: a settled market can no longer be updated
+DO $$ BEGIN BEGIN
+    UPDATE market SET close_time = '2026-06-02 06:00+00' WHERE ticker = 'KXHIGHNY-26JUN01-T85';
+    RAISE EXCEPTION 'FAIL: UPDATE of a settled market was accepted';
+EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: UPDATE of a settled market refused'; END; END $$;
+
+-- 11d: an open market's ticker and event_ticker cannot change
+INSERT INTO market (ticker, event_ticker, open_time, close_time)
+VALUES ('KXHIGHNY-26JUN01-T90', 'KXHIGHNY-26JUN01', '2026-05-31 15:00+00', '2026-06-02 04:59+00');
+
+DO $$ BEGIN BEGIN
+    UPDATE market SET ticker = 'KXHIGHNY-26JUN01-T91' WHERE ticker = 'KXHIGHNY-26JUN01-T90';
+    RAISE EXCEPTION 'FAIL: change of market ticker was accepted';
+EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: change of market ticker refused'; END; END $$;
+
+DO $$ BEGIN BEGIN
+    UPDATE market SET event_ticker = 'OTHER-EVENT' WHERE ticker = 'KXHIGHNY-26JUN01-T90';
+    RAISE EXCEPTION 'FAIL: change of market event_ticker was accepted';
+EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: change of market event_ticker refused'; END; END $$;
+
+-- 11e: DELETE of an unreferenced market and TRUNCATE market are refused
+-- (TRUNCATE uses CASCADE for the same reason as in Test 7.)
+INSERT INTO market (ticker, event_ticker, open_time, close_time)
+VALUES ('KXHIGHNY-26JUN01-T95', 'KXHIGHNY-26JUN01', '2026-05-31 15:00+00', '2026-06-02 04:59+00');
+
+DO $$ BEGIN BEGIN
+    DELETE FROM market WHERE ticker = 'KXHIGHNY-26JUN01-T95';
+    RAISE EXCEPTION 'FAIL: DELETE of an unreferenced market was accepted';
+EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: DELETE of an unreferenced market refused'; END; END $$;
+
+DO $$ BEGIN BEGIN
+    TRUNCATE market CASCADE;
+    RAISE EXCEPTION 'FAIL: TRUNCATE on market was accepted';
+EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: TRUNCATE on market refused'; END; END $$;
+
+-- 11f: is_settled is a generated column and cannot be written
+INSERT INTO market (ticker, event_ticker, open_time, close_time)
+VALUES ('KXHIGHNY-26JUN01-T99', 'KXHIGHNY-26JUN01', '2026-05-31 15:00+00', '2026-06-02 04:59+00');
+
+DO $$ BEGIN BEGIN
+    UPDATE market SET is_settled = true WHERE ticker = 'KXHIGHNY-26JUN01-T99';
+    RAISE EXCEPTION 'FAIL: writing is_settled was accepted';
+EXCEPTION WHEN generated_always THEN RAISE NOTICE 'PASS: writing is_settled refused'; END; END $$;
 
 ROLLBACK;
 

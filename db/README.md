@@ -6,7 +6,7 @@ The reconciliation database: an empty PostgreSQL 16 database for trade reconcili
 
 | File | Description |
 |---|---|
-| `schema.sql` | Creates the 10 tables, the two guard functions, the triggers and a `COMMENT ON` for every table and column |
+| `schema.sql` | Creates the 10 tables, the three guard functions, the triggers and a `COMMENT ON` for every table and column |
 
 The container is defined in `../docker-compose.yml` (repo root). The tests are in `../tests/db/test_schema.sql`. The spec is `../.claude/specs/001-recon-schema.md`.
 
@@ -26,7 +26,7 @@ run -> position_snapshot   (also references market)
 | `underlying` | A measured quantity at a location that markets settle on (e.g. a city temperature) | `underlying_id` | no |
 | `series` | A Kalshi series: a recurring family of events on one underlying | `ticker` | no |
 | `event` | A Kalshi event: one underlying on one calendar day | `ticker` | no |
-| `market` | A Kalshi yes/no contract on a strike within an event | `ticker` | no |
+| `market` | A Kalshi yes/no contract on a strike within an event | `ticker` | no (settled rows are frozen, see Market guard) |
 | `candle` | A quote bar (bid, ask, volume) for one market at a bar end time | `(market_ticker, ts)` | yes |
 | `run` | One backtest run (strategy, params, code version, cash, date range, status) | `run_id` (generated) | no, see run guard |
 | `order_intent` | An order the strategy decided to place | `intent_id` (generated) | yes |
@@ -64,6 +64,8 @@ run -> position_snapshot   (also references market)
 - `event` has `UNIQUE (underlying_id, event_date)`: one event per underlying per day. This catches duplicate events that Kalshi created under a renamed ticker.
 
 **Append-only triggers.** On `candle`, `order_intent`, `order_outcome`, `settlement` and `position_snapshot`, UPDATE, DELETE and TRUNCATE are refused with SQLSTATE `restrict_violation` (function `forbid_change()`).
+
+**Market guard.** On `market`, an open market (`is_settled = false`) may be updated, including the update that sets `result` and `settled_at`, but not its `ticker` or `event_ticker`. A settled market (`is_settled = true`) cannot be updated at all. DELETE and TRUNCATE are always refused. All with `restrict_violation` (function `market_guard()`). `is_settled` is a generated column, `result IS NOT NULL`.
 
 **Run guard.** On `run`, only `status` and `finished_at` may be updated (function `run_guard()`). Any other changed column is refused, DELETE is refused, and TRUNCATE is refused. All with `restrict_violation`.
 
@@ -114,11 +116,22 @@ Connection URL (the port is bound to loopback only):
 postgresql://kalbt:<password>@127.0.0.1:5433/kalbt
 ```
 
-Run the tests (they run inside a transaction that is rolled back, so the database stays empty). Expect a `PASS` notice per case and no `FAIL` or `ERROR` lines; `truncate cascades to ...` notices are expected.
+Run the schema tests on a **throwaway** database built from `db/schema.sql`, never on
+`kalbt-recon-db`: the tests insert their own sample rows (e.g. series `KXHIGHNY`) and expect
+empty tables, which clashes with loaded data. They run inside a transaction that is rolled
+back. Expect a `PASS` notice per case and no `FAIL` or `ERROR` lines; `truncate cascades to ...`
+notices are expected.
 
 ```bash
-docker exec -i kalbt-recon-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < tests/db/test_schema.sql
+docker run -d --name kalbt-scratch -e POSTGRES_PASSWORD=scratch -e POSTGRES_USER=kalbt \
+  -e POSTGRES_DB=kalbt -e TZ=UTC -e PGTZ=UTC \
+  -v "$PWD/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro" postgres:16
+# wait until `docker logs kalbt-scratch` shows "PostgreSQL init process complete", then:
+docker exec -i kalbt-scratch psql -v ON_ERROR_STOP=1 -U kalbt -d kalbt < tests/db/test_schema.sql
+docker rm -f kalbt-scratch
 ```
+
+This also proves that `db/schema.sql` builds cleanly from scratch.
 
 `db/schema.sql` runs only when the data volume is first created (it is mounted as `/docker-entrypoint-initdb.d/01_schema.sql`). Editing it later does not change an existing database.
 
