@@ -483,6 +483,38 @@ def check_21(ctx):
     return make_check(21, "translation counts", "WARN", [], detail)
 
 
+# ---------- checks 22-23: the rules text names the right station and source ----------
+
+def check_22(ctx, conn):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT s.station_id, s.cli_pil
+                       FROM series se
+                       JOIN underlying u ON u.underlying_id = se.underlying_id
+                       JOIN station s    ON s.station_id = u.station_id
+                       WHERE se.ticker = 'KXHIGHNY'""")
+        row = cur.fetchone()
+    if row is None:
+        return {"id": 22, "name": "rules name the station", "severity": "BLOCK", "status": "fail",
+                "detail": "station for KXHIGHNY unknown: seed the station and link the underlying before loading",
+                "examples": []}
+    needle = "(" + row[1] + ")"
+    problems = []
+    for m in ctx["markets"]:
+        rules = m.get("rules_primary", "")
+        if needle not in rules:
+            problems.append(f"{m.get('ticker', '?')}: {rules[:80]}")
+    return make_check(22, "rules name the station", "BLOCK", problems)
+
+
+def check_23(ctx):
+    problems = []
+    for m in ctx["markets"]:
+        rules = m.get("rules_primary", "")
+        if "The Weather Company" not in rules:
+            problems.append(f"{m.get('ticker', '?')}: {rules[:80]}")
+    return make_check(23, "rules name the settlement source", "BLOCK", problems)
+
+
 # ---------- the gate ----------
 
 def run_checks(dump_dir, conn):
@@ -508,6 +540,8 @@ def run_checks(dump_dir, conn):
         (19, "bar volume vs trade size", "WARN", check_19),
         (20, "late trades and empty expiration_value", "WARN", check_20),
         (21, "translation counts", "WARN", check_21),
+        (22, "rules name the station", "BLOCK", lambda c: check_22(c, conn)),
+        (23, "rules name the settlement source", "BLOCK", check_23),
     ]
     ctx["bid_0_to_null"] = 0
     ctx["ask_1_to_null"] = 0
