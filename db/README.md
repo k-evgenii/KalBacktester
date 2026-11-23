@@ -94,6 +94,31 @@ A mistake in an append-only table cannot be fixed with UPDATE or DELETE. The onl
 `kalbt_recon_pgdata`; Docker prefixes it with the project (folder) name, so from this worktree it
 is `kalbacktester-track-b_kalbt_recon_pgdata` (`docker volume ls` shows it).
 
+## Weather tables
+
+Unit 007 adds five changes at the end of `schema.sql`:
+
+- `station`: new table, one row per weather station.
+- `underlying.station_id`: new nullable column linking an underlying to its station.
+- `official_daily`, `observation_hourly`, `forecast_hourly`: new tables for the official daily values, the hourly station observations and the hourly model forecasts.
+
+| Table | One row is | Key | Append-only |
+|---|---|---|---|
+| `station` | A weather station: coordinates, time zone, standard UTC offset, NWS climate report id, IEM id and network | `station_id` (ICAO, e.g. `KNYC`) | no |
+| `official_daily` | The official daily high (and low for `nws_cli`) of a station on a local standard time day, from one source (`nws_cli` or `kalshi`) | `(station_id, climate_date, source)` | yes |
+| `observation_hourly` | One IEM ASOS report of a station, with the raw METAR | `(station_id, observed_at)` | yes |
+| `forecast_hourly` | One model forecast for a station and hour at a lead of 0 to 7 days (Open-Meteo previous runs) | `(station_id, model, valid_time, lead_day)` | yes |
+
+**Units.** Temperatures are degrees Fahrenheit (`_f`), humidity and cloud cover are percent (`_pct`), precipitation is inches (`_in`), radiation is W/m² (`shortwave_wm2`). Wind is knots in `observation_hourly` (`wind_speed_kt`) and miles per hour in `forecast_hourly` (`wind_speed_mph`). Elevation is metres.
+
+**Append-only triggers.** On `official_daily`, `observation_hourly` and `forecast_hourly`, UPDATE, DELETE and TRUNCATE are refused with `restrict_violation` (function `forbid_change()`). `station` is not append-only.
+
+**Seed.** `seed_stations.sql` inserts the KNYC station and links `NYC_HIGH` to it. It is safe to run twice. Apply it after the weather DDL:
+
+```bash
+docker exec -i kalbt-recon-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < db/seed_stations.sql
+```
+
 ## Usage
 
 Run these from the repo root. The worktree has no `.env`, so the password (`POSTGRES_PASSWORD`, required by the compose file) comes from the main checkout's `.env`.

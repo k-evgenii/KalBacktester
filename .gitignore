@@ -54,3 +54,4 @@ legacy/data
 
 # raw API dumps
 api_probe/kalshi/KXHIGHNY/
+api_probe/weather/dump/

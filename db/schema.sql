@@ -361,3 +361,156 @@ COMMENT ON COLUMN position_snapshot.as_of_date IS 'The date the snapshot is take
 COMMENT ON COLUMN position_snapshot.market_ticker IS 'The market the position is in.';
 COMMENT ON COLUMN position_snapshot.net_units IS 'Signed position in YES units (positive = long YES, negative = long NO), never 0.';
 COMMENT ON COLUMN position_snapshot.avg_cost IS 'Average cost per unit in dollars, strictly between 0 and 1.';
+
+-- ---------------------------------------------------------------------------
+-- Weather: stations and the link from underlying
+-- ---------------------------------------------------------------------------
+CREATE TABLE station (
+    station_id       text    PRIMARY KEY,            -- ICAO, e.g. KNYC
+    name             text    NOT NULL,
+    latitude         numeric NOT NULL,
+    longitude        numeric NOT NULL,
+    elevation_m      numeric,
+    tz_name          text    NOT NULL,               -- e.g. America/New_York
+    std_utc_offset_h integer NOT NULL,               -- local standard time, e.g. -5; fixes the climate day
+    cli_pil          text,                           -- NWS climate report id, e.g. CLINYC
+    iem_id           text    NOT NULL,               -- e.g. NYC
+    iem_network      text    NOT NULL,               -- e.g. NY_ASOS
+    CHECK (latitude  BETWEEN -90  AND 90),
+    CHECK (longitude BETWEEN -180 AND 180),
+    CHECK (std_utc_offset_h BETWEEN -12 AND 14)
+);
+
+ALTER TABLE underlying ADD COLUMN station_id text REFERENCES station (station_id);
+
+-- ---------------------------------------------------------------------------
+-- Weather: official daily values (append-only)
+-- nws_cli = NWS daily climate report; kalshi = Kalshi's settled value (The Weather Company)
+-- ---------------------------------------------------------------------------
+CREATE TABLE official_daily (
+    station_id    text        NOT NULL REFERENCES station (station_id),
+    climate_date  date        NOT NULL,              -- local standard time day
+    source        text        NOT NULL,
+    high_f        numeric     NOT NULL,
+    high_time_lst text,                              -- as printed, e.g. '247 PM'; nws_cli only
+    low_f         numeric,                           -- nws_cli only
+    issued_at     timestamptz NOT NULL,              -- when the value became known
+    reference     text        NOT NULL,              -- NWS product id or Kalshi event ticker
+    PRIMARY KEY (station_id, climate_date, source),
+    CHECK (source IN ('nws_cli', 'kalshi')),
+    CHECK (high_f BETWEEN -60 AND 140),
+    CHECK (low_f IS NULL OR low_f <= high_f),
+    CHECK (source = 'nws_cli' OR (high_time_lst IS NULL AND low_f IS NULL))
+);
+
+-- ---------------------------------------------------------------------------
+-- Weather: station observations (append-only), IEM ASOS reports
+-- ---------------------------------------------------------------------------
+CREATE TABLE observation_hourly (
+    station_id       text        NOT NULL REFERENCES station (station_id),
+    observed_at      timestamptz NOT NULL,
+    temp_f           numeric,
+    dewpoint_f       numeric,
+    rel_humidity_pct numeric,
+    wind_speed_kt    numeric,
+    precip_in        numeric,
+    metar            text        NOT NULL,           -- raw report; T-group has tenths of degC
+    PRIMARY KEY (station_id, observed_at),
+    CHECK (temp_f IS NULL OR temp_f BETWEEN -80 AND 140),
+    CHECK (rel_humidity_pct IS NULL OR rel_humidity_pct BETWEEN 0 AND 100),
+    CHECK (wind_speed_kt IS NULL OR wind_speed_kt >= 0),
+    CHECK (precip_in IS NULL OR precip_in >= 0)
+);
+
+-- ---------------------------------------------------------------------------
+-- Weather: model forecasts (append-only), Open-Meteo previous runs at the station
+-- lead_day N = value predicted 24 h x N before valid_time (0 = latest run)
+-- ---------------------------------------------------------------------------
+CREATE TABLE forecast_hourly (
+    station_id      text        NOT NULL REFERENCES station (station_id),
+    model           text        NOT NULL,
+    valid_time      timestamptz NOT NULL,
+    lead_day        smallint    NOT NULL,
+    temp_f          numeric,
+    dewpoint_f      numeric,
+    cloud_cover_pct numeric,
+    wind_speed_mph  numeric,
+    precip_in       numeric,
+    shortwave_wm2   numeric,
+    PRIMARY KEY (station_id, model, valid_time, lead_day),
+    CHECK (lead_day BETWEEN 0 AND 7),
+    CHECK (temp_f IS NULL OR temp_f BETWEEN -80 AND 140),
+    CHECK (cloud_cover_pct IS NULL OR cloud_cover_pct BETWEEN 0 AND 100),
+    CHECK (wind_speed_mph IS NULL OR wind_speed_mph >= 0),
+    CHECK (precip_in IS NULL OR precip_in >= 0),
+    CHECK (shortwave_wm2 IS NULL OR shortwave_wm2 >= 0)
+);
+
+-- Append-only, same guard as the other append-only tables
+CREATE TRIGGER official_daily_no_update_delete BEFORE UPDATE OR DELETE ON official_daily
+    FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE TRIGGER official_daily_no_truncate BEFORE TRUNCATE ON official_daily
+    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+CREATE TRIGGER observation_hourly_no_update_delete BEFORE UPDATE OR DELETE ON observation_hourly
+    FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE TRIGGER observation_hourly_no_truncate BEFORE TRUNCATE ON observation_hourly
+    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+CREATE TRIGGER forecast_hourly_no_update_delete BEFORE UPDATE OR DELETE ON forecast_hourly
+    FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE TRIGGER forecast_hourly_no_truncate BEFORE TRUNCATE ON forecast_hourly
+    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+-- ---------------------------------------------------------------------------
+-- Weather comments
+-- ---------------------------------------------------------------------------
+
+-- underlying (added column)
+COMMENT ON COLUMN underlying.station_id IS 'The weather station whose readings the underlying settles on; null until linked.';
+
+-- station
+COMMENT ON TABLE  station IS 'A weather station: location, time zone and the ids used by NWS and IEM.';
+COMMENT ON COLUMN station.station_id IS 'ICAO id of the station, for example KNYC.';
+COMMENT ON COLUMN station.name IS 'Station name as given by IEM.';
+COMMENT ON COLUMN station.latitude IS 'Latitude in decimal degrees, -90 to 90.';
+COMMENT ON COLUMN station.longitude IS 'Longitude in decimal degrees, -180 to 180.';
+COMMENT ON COLUMN station.elevation_m IS 'Elevation in metres; null if unknown.';
+COMMENT ON COLUMN station.tz_name IS 'IANA time zone name, for example America/New_York.';
+COMMENT ON COLUMN station.std_utc_offset_h IS 'Local standard time offset from UTC in whole hours (no daylight saving), for example -5; it fixes the climate day.';
+COMMENT ON COLUMN station.cli_pil IS 'NWS daily climate report product id, for example CLINYC; null if not used.';
+COMMENT ON COLUMN station.iem_id IS 'Station id in the IEM archive, for example NYC.';
+COMMENT ON COLUMN station.iem_network IS 'IEM network the station belongs to, for example NY_ASOS.';
+
+-- official_daily
+COMMENT ON TABLE  official_daily IS 'Official daily high per station and climate day from one source; append-only.';
+COMMENT ON COLUMN official_daily.station_id IS 'The station the value is for.';
+COMMENT ON COLUMN official_daily.climate_date IS 'The local standard time day the value covers.';
+COMMENT ON COLUMN official_daily.source IS 'Where the value comes from: nws_cli (NWS daily climate report) or kalshi (Kalshi settled value).';
+COMMENT ON COLUMN official_daily.high_f IS 'Daily high in degrees Fahrenheit, -60 to 140.';
+COMMENT ON COLUMN official_daily.high_time_lst IS 'Time of the high in local standard time as printed in the report, for example 247 PM; nws_cli only, otherwise null.';
+COMMENT ON COLUMN official_daily.low_f IS 'Daily low in degrees Fahrenheit, at most high_f; nws_cli only, otherwise null.';
+COMMENT ON COLUMN official_daily.issued_at IS 'When the value became known (UTC).';
+COMMENT ON COLUMN official_daily.reference IS 'NWS product id or Kalshi event ticker the value was taken from.';
+
+-- observation_hourly
+COMMENT ON TABLE  observation_hourly IS 'One IEM ASOS station report per station and observation time; append-only.';
+COMMENT ON COLUMN observation_hourly.station_id IS 'The station that made the report.';
+COMMENT ON COLUMN observation_hourly.observed_at IS 'When the report was made (UTC).';
+COMMENT ON COLUMN observation_hourly.temp_f IS 'Air temperature in degrees Fahrenheit, -80 to 140; null if missing.';
+COMMENT ON COLUMN observation_hourly.dewpoint_f IS 'Dew point in degrees Fahrenheit; null if missing.';
+COMMENT ON COLUMN observation_hourly.rel_humidity_pct IS 'Relative humidity in percent, 0 to 100; null if missing.';
+COMMENT ON COLUMN observation_hourly.wind_speed_kt IS 'Wind speed in knots, 0 or more; null if missing.';
+COMMENT ON COLUMN observation_hourly.precip_in IS 'Precipitation in inches, 0 or more; null if missing.';
+COMMENT ON COLUMN observation_hourly.metar IS 'The raw METAR report; its T-group holds temperature in tenths of degrees Celsius.';
+
+-- forecast_hourly
+COMMENT ON TABLE  forecast_hourly IS 'Open-Meteo previous-runs model forecast per station, model, valid time and lead day; append-only.';
+COMMENT ON COLUMN forecast_hourly.station_id IS 'The station the forecast is for.';
+COMMENT ON COLUMN forecast_hourly.model IS 'Weather model name.';
+COMMENT ON COLUMN forecast_hourly.valid_time IS 'The hour the forecast is valid for (UTC).';
+COMMENT ON COLUMN forecast_hourly.lead_day IS 'The value was predicted 24 hours times lead_day before valid_time; 0 is the latest run; 0 to 7.';
+COMMENT ON COLUMN forecast_hourly.temp_f IS 'Forecast air temperature in degrees Fahrenheit, -80 to 140; null if missing.';
+COMMENT ON COLUMN forecast_hourly.dewpoint_f IS 'Forecast dew point in degrees Fahrenheit; null if missing.';
+COMMENT ON COLUMN forecast_hourly.cloud_cover_pct IS 'Forecast cloud cover in percent, 0 to 100; null if missing.';
+COMMENT ON COLUMN forecast_hourly.wind_speed_mph IS 'Forecast wind speed in miles per hour, 0 or more; null if missing.';
+COMMENT ON COLUMN forecast_hourly.precip_in IS 'Forecast precipitation in inches, 0 or more; null if missing.';
+COMMENT ON COLUMN forecast_hourly.shortwave_wm2 IS 'Forecast shortwave radiation in watts per square metre, 0 or more; null if missing.';

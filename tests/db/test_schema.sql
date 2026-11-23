@@ -6,13 +6,15 @@
 BEGIN;
 
 -- ---------------------------------------------------------------------------
--- Test 1: exactly the 10 expected tables exist in schema public
+-- Test 1: exactly the expected tables exist in schema public
+-- (10 from spec 001, plus the 4 weather tables from spec 007)
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
     found text[];
-    expected text[] := ARRAY['candle','event','market','order_intent','order_outcome',
-                             'position_snapshot','run','series','settlement','underlying'];
+    expected text[] := ARRAY['candle','event','forecast_hourly','market','observation_hourly',
+                             'official_daily','order_intent','order_outcome',
+                             'position_snapshot','run','series','settlement','station','underlying'];
 BEGIN
     SELECT array_agg(table_name::text ORDER BY table_name) INTO found
     FROM information_schema.tables
@@ -20,7 +22,7 @@ BEGIN
     IF found IS DISTINCT FROM expected THEN
         RAISE EXCEPTION 'FAIL: tables in public are %, expected %', found, expected;
     END IF;
-    RAISE NOTICE 'PASS: exactly the 10 expected tables exist';
+    RAISE NOTICE 'PASS: exactly the 14 expected tables exist';
 END $$;
 
 -- ---------------------------------------------------------------------------

@@ -19,6 +19,8 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 |---|---|---|---|---|
 | 002 | A ingestion | one-week KXHIGHNY raw dump (`api_probe/kalshi/dump_kxhighny.py`) | dev / lead chat | approved by reviewer, verified by lead; not committed |
 | 003 | A ingestion | load the one-week dump into the database (`ingest/load_kxhighny_dump.py`); 5 quantity columns made numeric | dev / lead chat | approved by reviewer, verified by lead; not committed |
+| 006 | A ingestion | one-week weather dump for KNYC (`api_probe/weather/dump_weather.py`) | dev / lead chat | approved by reviewer, verified by lead; not committed |
+| 007 | A ingestion | weather tables + KNYC seed (`db/schema.sql`, `db/seed_stations.sql`) | dev / lead chat | approved by user, verified by lead; applied to live db; not committed |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
