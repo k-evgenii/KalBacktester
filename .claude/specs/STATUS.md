@@ -23,7 +23,8 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | 007 | A ingestion | weather tables + KNYC seed (`db/schema.sql`, `db/seed_stations.sql`) | dev / lead chat | done, commit f500ee8 |
 | 004 | B | ingestion QA gate in front of the KXHIGHNY loader (`ingest/qa_kxhighny_dump.py`) | track-b | done, commit 3b38375 (merged into dev) |
 | 008 | B | settled markets frozen in the database (`market_guard`) | track-b | done, commit bfcb256 (merged into dev) |
-| 009 | A ingestion | load the weather dump (`ingest/load_weather_dump.py`); forecast CHECKs relaxed by user decision | dev / lead chat | approved by reviewer, verified by lead; not committed |
+| 009 | A ingestion | load the weather dump (`ingest/load_weather_dump.py`); forecast CHECKs relaxed by user decision | dev / lead chat | done, commit 8dd0c12 |
+| 010 | B | QA gate: rules text must name the station and The Weather Company | track-b | done, commit 51139a8 (merged into dev, b821fb9) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
