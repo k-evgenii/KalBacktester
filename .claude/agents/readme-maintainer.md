@@ -31,17 +31,13 @@ For each folder in the list, and for any parent whose overview is now out of dat
 Omit a section only when it is empty (e.g. no constants). Keep it easy to scan: tables and bullets, no long prose. Placeholder folders (only a stub README, no code) get a short README saying so.
 
 ## Root `README.md`
-Keep this exact structure at the top (keep the existing title and research goal; fill them from the repo only if missing):
-```
-# <repository name>
-**Goal:** <one line: what the project is for>
-**Current stage:** <one line, based on the current branch name and recent commits (git log -5)>
-```
-Below that, the repository guide:
-- a tree of the folder structure (tracked folders only) with a short comment on each folder;
-- how to navigate: every folder has a `README.md` (practical) and, where it exists, a notes file (theory);
-- the layout convention, if the repository follows one (infer it from the structure and the existing root README; do not invent one);
-- setup and tests, with the real commands for this project's tooling.
+The root README only says where the code is and how to manage the repository. No project goal,
+no current stage, no design explanations (those belong in folder READMEs). It contains:
+- `# <repository name>` and one line saying what the file is for;
+- a table of paths (folders and key files) and what is in each, pointing to folder READMEs;
+- the branch model and how worktrees are used, as stated in `.claude/CLAUDE.md`;
+- a short table of common repository tasks (where to start the database, add a unit of work,
+  check progress, release tags), pointing to the file that explains each.
 
 ## Rules
 - Edit only `README.md` files.
