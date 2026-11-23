@@ -23,10 +23,14 @@ disagrees with them.
 
 - **The user and the lead model (the main session) plan together.** The lead never starts
   coding a piece on its own.
-- **Sonnet workers write the code** from the agreed spec. The lead writes specs, briefs the
-  workers, reviews diffs and runs checks.
-- **The user and the lead design every test and smoke test together.** Workers may not
-  invent, edit or weaken them.
+- **The lead (Opus) orchestrates and integrates only.** It writes specs with the user, briefs
+  workers, reads every diff, and does the hard thinking when a worker raises a concern or a
+  loop gets stuck. It does not write feature code.
+- **Sonnet workers at medium effort do the building and testing** (`effort: "medium"` on each
+  call): `implementer` writes the code, `qa-tester` writes and runs the tests and debugs
+  failures, `reviewer` is the independent checker.
+- **The user and the lead decide what is tested** (the behaviour list in the spec). The
+  `qa-tester` writes the test code; it may add tests but never drop or weaken an agreed one.
 
 ## 3. The spec is the prompt
 
@@ -50,17 +54,18 @@ Keep a unit small: one worker, one script or a couple of closely related ones.
 | Step | Who | Gate |
 |---|---|---|
 | 1. Write the spec | user and lead | user approves the spec |
-| 2. Implement | Sonnet implementer | none; parallel only when files are disjoint |
-| 3. Self-check | implementer | runs the agreed tests and lint, reports output and anything unclear |
-| 4. Independent review | a second Sonnet | gets only the spec and the diff, not the implementer's explanation |
-| 5. Verify | lead | reads the diff and reruns the tests itself |
-| 6. Fix | implementer | at most two rounds |
-| 7. Changelog and version bump | release agent | user says commit, tag or push |
+| 2. Build | `implementer` | none; parallel only when files are disjoint |
+| 3. Test | `qa-tester` | writes and runs the tests, reports `QA: PASS` or `QA: FAIL` with causes |
+| 4. Independent check | `reviewer` | gets only the spec, the diff and the test results; `VERDICT: APPROVE` or `REJECT` |
+| 5. Loop | lead | on `QA: FAIL` or `REJECT`, findings go back to the same implementer; repeat 2–4 |
+| 6. Verify | lead | on `APPROVE`, reads the diff and reruns the tests itself |
+| 7. Changelog and version bump | `release-keeper` | user says commit, tag or push |
 
 - **The reviewer checks three things:** what the spec asked for and is missing, what was
   built that the spec did not ask for, and breaches of section 1. It changes nothing.
-- **Two failed fix rounds mean the spec is wrong.** Go back to step 1 with the user instead
-  of patching further.
+- **Escalation:** after 3 rounds, or the same failure twice in a row, the loop stops. The lead
+  investigates itself and either corrects the implementer with specific instructions or takes
+  a spec problem back to the user.
 - **The reviewer sees no explanation on purpose.** An agent handed the author's reasoning
   tends to confirm it.
 
@@ -79,8 +84,8 @@ Keep a unit small: one worker, one script or a couple of closely related ones.
   by the lead chat only. After each merge it runs the whole test suite on `dev`.
   `dev` is always green: a merge that breaks it is reverted and the unit reopened.
 - Any agent that finds itself on `main` stops and reports before changing anything.
-- One unit = one commit = one tag. Agents: `implementer`, `reviewer`, `release-keeper`
-  per unit; `annotator` and `readme-maintainer` once, in the final docs pass.
+- One unit = one commit = one tag. Agents: `implementer`, `qa-tester`, `reviewer`,
+  `release-keeper` per unit; `annotator` and `readme-maintainer` once, in the final docs pass.
 
 ## 6. Safety
 

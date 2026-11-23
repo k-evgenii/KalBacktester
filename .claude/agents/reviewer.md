@@ -17,5 +17,12 @@ Report three lists, each item with `file:line`:
 3. **Over-complicated** — breaches of `CLAUDE.md` section 1: single-use classes or
    abstractions, unreadable dense code, a second variant kept behind a flag.
 
-Run the spec's "Done when" commands and include the output. Change nothing. If all three lists
-are empty and the commands pass, say so in one line.
+Also check the qa-tester's test files: every agreed test from the spec is present and tests
+what it says.
+
+Run the spec's "Done when" commands and include the output. Change nothing.
+
+End with exactly one verdict line:
+- `VERDICT: APPROVE` when list 1 is empty, the agreed tests are all present and the commands
+  pass (items in lists 2 and 3 may still be noted as minor);
+- `VERDICT: REJECT` otherwise, followed by the numbered findings the implementer must fix.

@@ -19,7 +19,11 @@ Money is integer cents.>
 <Pseudo-code or real code, written by the lead, for anything non-obvious. Used as written.>
 
 ## Agreed tests
-<Designed by the user and the lead. Exact inputs and expected outputs.>
+<Decided by the user and the lead: the behaviours to test, with inputs and expected outputs.
+The qa-tester writes them as code and may add more.>
+
+## Test files
+<Paths the qa-tester may create or change.>
 
 ## Legacy reference
 <File and lines being rebuilt, or "none".>
