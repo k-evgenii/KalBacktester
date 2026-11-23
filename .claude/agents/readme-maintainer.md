@@ -31,9 +31,13 @@ For each folder in the list, and for any parent whose overview is now out of dat
 Omit a section only when it is empty (e.g. no constants). Keep it easy to scan: tables and bullets, no long prose. Placeholder folders (only a stub README, no code) get a short README saying so.
 
 ## Root `README.md`
-The root README only says where the code is and how to manage the repository. No project goal,
-no current stage, no design explanations (those belong in folder READMEs). It contains:
-- `# <repository name>` and one line saying what the file is for;
+The root README only says where the code is, the current stage, and how to manage the
+repository. No project goal and no design explanations (those belong in folder READMEs). It
+contains:
+- `# <repository name>`;
+- `**Current stage:**` one or two lines, based on the current branch name and recent commits
+  (`git log -5`); keep it up to date on every pass;
+- one line saying what the file is for;
 - a table of paths (folders and key files) and what is in each, pointing to folder READMEs;
 - the branch model and how worktrees are used, as stated in `.claude/CLAUDE.md`;
 - a short table of common repository tasks (where to start the database, add a unit of work,

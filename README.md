@@ -1,5 +1,8 @@
 # KalBacktester
 
+**Current stage:** Branch `track-b` (database track). The reconciliation database schema, its
+tests and docs are done; before that, the v1.0.0 engine was moved into `legacy/`.
+
 Where the code lives and how the repository is managed. Each folder's own `README.md` explains
 its contents.
 
