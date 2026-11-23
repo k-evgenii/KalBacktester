@@ -71,7 +71,7 @@ run -> position_snapshot   (also references market)
 
 - Prices and money are `numeric` dollars (exact decimal), not cents.
 - Timestamps are `timestamptz`, UTC. The schema runs `SET timezone = 'UTC'` and the container sets `TZ` and `PGTZ` to UTC.
-- Quantities and units are `integer`.
+- Quantities, volumes and units are `numeric`: Kalshi trades fractional contracts (for example a bar volume of 29.29).
 
 ## Loading order
 

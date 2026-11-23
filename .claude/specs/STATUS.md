@@ -17,6 +17,8 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 
 | # | Track | Unit | Branch / chat | State |
 |---|---|---|---|---|
+| 002 | A ingestion | one-week KXHIGHNY raw dump (`api_probe/kalshi/dump_kxhighny.py`) | dev / lead chat | approved by reviewer, verified by lead; not committed |
+| 003 | A ingestion | load the one-week dump into the database (`ingest/load_kxhighny_dump.py`); 5 quantity columns made numeric | dev / lead chat | approved by reviewer, verified by lead; not committed |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |

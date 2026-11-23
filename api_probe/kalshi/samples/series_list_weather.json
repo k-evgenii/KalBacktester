@@ -1,0 +1,93 @@
+{
+ "series": [
+  {
+   "additional_prohibitions": [
+    "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+    "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+   ],
+   "categories": [
+    "Climate and Weather"
+   ],
+   "category": "Climate and Weather",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/STORMORDER.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/STORMORDER.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "custom",
+   "last_updated_ts": "2026-10-15T08:14:10.229686Z",
+   "settlement_sources": [
+    {
+     "name": "National Weather Service",
+     "url": "https://www.weather.gov"
+    },
+    {
+     "name": "National Oceanic and Atmospheric Administration",
+     "url": "https://www.nhc.noaa.gov/"
+    }
+   ],
+   "tags": [
+    "Hurricanes"
+   ],
+   "ticker": "KXFIRSTHURRICANE",
+   "title": "First Hurricane"
+  },
+  {
+   "additional_prohibitions": [
+    "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+    "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+   ],
+   "categories": [
+    "Climate and Weather"
+   ],
+   "category": "Climate and Weather",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/EMERGENCYLA.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/EMERGENCYLA.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "custom",
+   "last_updated_ts": "2026-10-15T08:14:10.229686Z",
+   "settlement_sources": [
+    {
+     "name": "National Weather Service",
+     "url": "https://forecast.weather.gov/product.php?site=LOX&product=CLI&issuedby=CQT"
+    }
+   ],
+   "tags": [
+    "Hurricanes"
+   ],
+   "ticker": "KXEMERGENCYLA",
+   "title": "Natural disaster hits Los Angeles"
+  },
+  {
+   "additional_prohibitions": [
+    "Persons who are employed by any of the Source Agencies are not permitted to trade on the Contract.",
+    "Persons who hold any material, non-public information on the Underlying are not permitted to trade on the Contract."
+   ],
+   "categories": [
+    "Climate and Weather"
+   ],
+   "category": "Climate and Weather",
+   "contract_terms_url": "https://assets.kalshi.com/contract_terms/SNOWOVERTIME.pdf",
+   "contract_url": "https://assets.kalshi.com/regulatory/product-certifications/SNOWOVERTIME.pdf",
+   "exchange_index": 0,
+   "fee_multiplier": 1,
+   "fee_type": "quadratic",
+   "frequency": "one_off",
+   "last_updated_ts": "2026-11-14T03:20:26.180601Z",
+   "settlement_sources": [
+    {
+     "name": "NWS Climatological Report Miami",
+     "url": "https://forecast.weather.gov/product.php?site=MFL&product=CLI&issuedby=MIA"
+    }
+   ],
+   "tags": [
+    "Snow and rain",
+    "Snow"
+   ],
+   "ticker": "KXMIASNOWM",
+   "title": "Chicago Snowfall Monthly"
+  }
+ ]
+}

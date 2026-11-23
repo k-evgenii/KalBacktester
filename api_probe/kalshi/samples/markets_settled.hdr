@@ -1,0 +1,14 @@
+HTTP/2 200 
+content-type: application/json
+date: Mon, 23 Nov 2026 19:25:56 GMT
+x-content-type-options: nosniff
+x-kalshi-cache-hits: 0
+cache-control: public, max-age=15
+content-security-policy: default-src 'none';
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Accept-Encoding,Accept-Language
+x-cache: Miss from cloudfront
+via: 1.1 7f1cdcb1bef3e6d5f4da2bd6304ccc5a.cloudfront.net (CloudFront)
+x-amz-cf-pop: LHR3-P3
+x-amz-cf-id: ypJBhd4dg3xsb_1qVCt4RluOnl8vrQblPEkffkC0qCfZfHs4TFbbpA==
+

@@ -51,3 +51,6 @@ htmlcov/
 
 # legacy data symlink
 legacy/data
+
+# raw API dumps
+api_probe/kalshi/KXHIGHNY/

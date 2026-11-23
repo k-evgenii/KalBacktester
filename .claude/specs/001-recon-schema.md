@@ -30,7 +30,7 @@ candles (crossed quotes can occur in real data; recon reports them instead).
 
 ### Types
 - prices and money: `numeric` (exact decimal, dollars); timestamps: `timestamptz` (UTC);
-  dates: `date`; quantities and units: `integer`; tickers and ids we name: `text`.
+  dates: `date`; quantities and units: `numeric` (changed from `integer` on 2026-11-23: Kalshi trades fractional contracts); tickers and ids we name: `text`.
 - Generated ids: `bigint GENERATED ALWAYS AS IDENTITY`.
 
 ### Tables (all columns `NOT NULL` unless marked nullable)
@@ -50,7 +50,7 @@ candles (crossed quotes can occur in real data; recon reports them instead).
    CHECK `floor_strike IS NULL OR cap_strike IS NULL OR floor_strike <= cap_strike`;
    CHECK `open_time < close_time`.
 5. `candle`: `market_ticker text FK -> market`, `ts timestamptz` (bar end, UTC),
-   `yes_bid numeric` nullable, `yes_ask numeric` nullable, `volume integer`;
+   `yes_bid numeric` nullable, `yes_ask numeric` nullable, `volume numeric`;
    `PRIMARY KEY (market_ticker, ts)`;
    CHECK `yes_bid IS NULL OR (yes_bid > 0 AND yes_bid < 1)`; same for `yes_ask`;
    CHECK `volume >= 0`. Append-only.
@@ -64,11 +64,11 @@ candles (crossed quotes can occur in real data; recon reports them instead).
    Only `status` and `finished_at` may be updated; no DELETE, no TRUNCATE.
 7. `order_intent`: `intent_id bigint identity PK`, `run_id bigint FK -> run`,
    `decided_at timestamptz`, `market_ticker text FK -> market`, `side text`, `action text`,
-   `quantity integer`, `reason text` nullable;
+   `quantity numeric`, `reason text` nullable;
    CHECK `side IN ('yes','no')`; CHECK `action IN ('buy','sell')`; CHECK `quantity > 0`.
    Append-only.
 8. `order_outcome`: `outcome_id bigint identity PK`, `intent_id bigint FK -> order_intent`,
-   `occurred_at timestamptz`, `outcome text`, `quantity integer`, `price numeric` nullable,
+   `occurred_at timestamptz`, `outcome text`, `quantity numeric`, `price numeric` nullable,
    `fee numeric` nullable, `reason_code text` nullable;
    CHECK `outcome IN ('filled','rejected','blocked')`;
    CHECK named `outcome_fields`:
@@ -79,11 +79,11 @@ candles (crossed quotes can occur in real data; recon reports them instead).
         AND price IS NULL AND fee IS NULL)`.
    Append-only.
 9. `settlement`: `run_id bigint FK -> run`, `market_ticker text FK -> market`,
-   `settled_at timestamptz`, `result text`, `net_units integer`, `payout numeric`;
+   `settled_at timestamptz`, `result text`, `net_units numeric`, `payout numeric`;
    `PRIMARY KEY (run_id, market_ticker)`;
    CHECK `result IN ('yes','no')`; CHECK `net_units <> 0`; CHECK `payout >= 0`. Append-only.
 10. `position_snapshot`: `run_id bigint FK -> run`, `as_of_date date`,
-    `market_ticker text FK -> market`, `net_units integer`, `avg_cost numeric`;
+    `market_ticker text FK -> market`, `net_units numeric`, `avg_cost numeric`;
     `PRIMARY KEY (run_id, as_of_date, market_ticker)`;
     CHECK `net_units <> 0`; CHECK `avg_cost > 0 AND avg_cost < 1`. Append-only.
 

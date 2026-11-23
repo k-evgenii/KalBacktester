@@ -1,0 +1,14 @@
+HTTP/2 200 
+content-type: application/json; charset=utf-8
+content-length: 827
+date: Mon, 23 Nov 2026 19:28:33 GMT
+x-ratelimit-limit: 600
+content-security-policy: default-src 'none';
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options: nosniff
+x-ratelimit-cost: 10
+x-cache: Miss from cloudfront
+via: 1.1 83737474e4ebc852f4e5c88d9f74d6ce.cloudfront.net (CloudFront)
+x-amz-cf-pop: LHR82-P3
+x-amz-cf-id: TaY4YYCXY9fx0azirr7sHAzjUGdSe-6I4-6k3GhTl117NeGe5ChaIw==
+

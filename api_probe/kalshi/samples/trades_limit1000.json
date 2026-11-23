@@ -1,0 +1,41 @@
+{
+ "cursor": "",
+ "trades": [
+  {
+   "count_fp": "66.00",
+   "created_time": "2026-11-23T05:06:23.706407Z",
+   "is_block_trade": false,
+   "no_price_dollars": "0.9900",
+   "taker_book_side": "bid",
+   "taker_outcome_side": "yes",
+   "taker_side": "yes",
+   "ticker": "KXHIGHNY-26NOV22-T68",
+   "trade_id": "072a1a56-32d1-9a07-0ee0-fa0855d0805d",
+   "yes_price_dollars": "0.0100"
+  },
+  {
+   "count_fp": "8.15",
+   "created_time": "2026-11-23T04:22:21.300556Z",
+   "is_block_trade": false,
+   "no_price_dollars": "0.9900",
+   "taker_book_side": "bid",
+   "taker_outcome_side": "yes",
+   "taker_side": "yes",
+   "ticker": "KXHIGHNY-26NOV22-T68",
+   "trade_id": "072a1bf7-7191-8efb-881a-b5e5d25a31ad",
+   "yes_price_dollars": "0.0100"
+  },
+  {
+   "count_fp": "4.00",
+   "created_time": "2026-11-23T02:44:12.281723Z",
+   "is_block_trade": false,
+   "no_price_dollars": "0.9900",
+   "taker_book_side": "bid",
+   "taker_outcome_side": "yes",
+   "taker_side": "yes",
+   "ticker": "KXHIGHNY-26NOV22-T68",
+   "trade_id": "072a184f-e131-aa6b-41e5-c1c720af93f9",
+   "yes_price_dollars": "0.0100"
+  }
+ ]
+}
