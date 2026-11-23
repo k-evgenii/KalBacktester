@@ -141,22 +141,23 @@ Connection URL (the port is bound to loopback only):
 postgresql://kalbt:<password>@127.0.0.1:5433/kalbt
 ```
 
-Run the schema tests on a **throwaway** database built from `db/schema.sql`, never on
-`kalbt-recon-db`: the tests insert their own sample rows (e.g. series `KXHIGHNY`) and expect
+Run the schema tests on a **throwaway** database built from `db/schema.sql`, never on the live
+`kalbt` database: the tests insert their own sample rows (e.g. series `KXHIGHNY`) and expect
 empty tables, which clashes with loaded data. They run inside a transaction that is rolled
 back. Expect a `PASS` notice per case and no `FAIL` or `ERROR` lines; `truncate cascades to ...`
-notices are expected.
+notices are expected. The throwaway database lives in the same container and is dropped at
+the end:
 
 ```bash
-docker run -d --name kalbt-scratch -e POSTGRES_PASSWORD=scratch -e POSTGRES_USER=kalbt \
-  -e POSTGRES_DB=kalbt -e TZ=UTC -e PGTZ=UTC \
-  -v "$PWD/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro" postgres:16
-# wait until `docker logs kalbt-scratch` shows "PostgreSQL init process complete", then:
-docker exec -i kalbt-scratch psql -v ON_ERROR_STOP=1 -U kalbt -d kalbt < tests/db/test_schema.sql
-docker rm -f kalbt-scratch
+docker exec kalbt-recon-db sh -c 'createdb -U "$POSTGRES_USER" kalbt_schema_test'
+docker exec -i kalbt-recon-db sh -c 'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d kalbt_schema_test' < db/schema.sql
+docker exec -i kalbt-recon-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d kalbt_schema_test' < tests/db/test_schema.sql
+docker exec -i kalbt-recon-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d kalbt_schema_test' < tests/db/test_weather_schema.sql
+docker exec kalbt-recon-db sh -c 'dropdb -U "$POSTGRES_USER" kalbt_schema_test'
 ```
 
-This also proves that `db/schema.sql` builds cleanly from scratch.
+This also proves that `db/schema.sql` builds cleanly from scratch. Expected: 63 PASS for
+`test_schema.sql`, 46 PASS for `test_weather_schema.sql`.
 
 `db/schema.sql` runs only when the data volume is first created (it is mounted as `/docker-entrypoint-initdb.d/01_schema.sql`). Editing it later does not change an existing database.
 
