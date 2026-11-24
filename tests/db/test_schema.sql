@@ -429,7 +429,9 @@ DO $$ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- Test 7: append-only tables refuse UPDATE, DELETE and TRUNCATE (restrict_violation)
+-- Test 7: candle refuses UPDATE, DELETE and TRUNCATE (restrict_violation); the four trading tables
+-- refuse UPDATE but accept DELETE and TRUNCATE (spec A024). Accepted deletes are undone inside
+-- their own block, so later tests still see the sample rows.
 -- TRUNCATE uses CASCADE: without it Postgres refuses to truncate a referenced table
 -- with a different error before the trigger runs.
 -- ---------------------------------------------------------------------------
@@ -451,13 +453,20 @@ DO $$ BEGIN BEGIN
     RAISE EXCEPTION 'FAIL: UPDATE on order_intent was accepted';
 EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: UPDATE on order_intent refused'; END; END $$;
 DO $$ BEGIN BEGIN
+    DELETE FROM order_outcome;
     DELETE FROM order_intent;
-    RAISE EXCEPTION 'FAIL: DELETE on order_intent was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: DELETE on order_intent refused'; END; END $$;
+    IF (SELECT count(*) FROM order_intent) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: DELETE on order_intent left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the delete' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: DELETE on order_intent accepted'; END; END $$;
 DO $$ BEGIN BEGIN
     TRUNCATE order_intent CASCADE;
-    RAISE EXCEPTION 'FAIL: TRUNCATE on order_intent was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: TRUNCATE on order_intent refused'; END; END $$;
+    IF (SELECT count(*) FROM order_intent) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: TRUNCATE on order_intent left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the truncate' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: TRUNCATE on order_intent accepted'; END; END $$;
 
 DO $$ BEGIN BEGIN
     UPDATE order_outcome SET reason_code = 'changed';
@@ -465,12 +474,18 @@ DO $$ BEGIN BEGIN
 EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: UPDATE on order_outcome refused'; END; END $$;
 DO $$ BEGIN BEGIN
     DELETE FROM order_outcome;
-    RAISE EXCEPTION 'FAIL: DELETE on order_outcome was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: DELETE on order_outcome refused'; END; END $$;
+    IF (SELECT count(*) FROM order_outcome) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: DELETE on order_outcome left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the delete' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: DELETE on order_outcome accepted'; END; END $$;
 DO $$ BEGIN BEGIN
     TRUNCATE order_outcome CASCADE;
-    RAISE EXCEPTION 'FAIL: TRUNCATE on order_outcome was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: TRUNCATE on order_outcome refused'; END; END $$;
+    IF (SELECT count(*) FROM order_outcome) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: TRUNCATE on order_outcome left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the truncate' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: TRUNCATE on order_outcome accepted'; END; END $$;
 
 DO $$ BEGIN BEGIN
     UPDATE settlement SET payout = payout + 1;
@@ -478,12 +493,18 @@ DO $$ BEGIN BEGIN
 EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: UPDATE on settlement refused'; END; END $$;
 DO $$ BEGIN BEGIN
     DELETE FROM settlement;
-    RAISE EXCEPTION 'FAIL: DELETE on settlement was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: DELETE on settlement refused'; END; END $$;
+    IF (SELECT count(*) FROM settlement) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: DELETE on settlement left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the delete' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: DELETE on settlement accepted'; END; END $$;
 DO $$ BEGIN BEGIN
     TRUNCATE settlement CASCADE;
-    RAISE EXCEPTION 'FAIL: TRUNCATE on settlement was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: TRUNCATE on settlement refused'; END; END $$;
+    IF (SELECT count(*) FROM settlement) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: TRUNCATE on settlement left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the truncate' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: TRUNCATE on settlement accepted'; END; END $$;
 
 DO $$ BEGIN BEGIN
     UPDATE position_snapshot SET avg_cost = 0.5;
@@ -491,15 +512,21 @@ DO $$ BEGIN BEGIN
 EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: UPDATE on position_snapshot refused'; END; END $$;
 DO $$ BEGIN BEGIN
     DELETE FROM position_snapshot;
-    RAISE EXCEPTION 'FAIL: DELETE on position_snapshot was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: DELETE on position_snapshot refused'; END; END $$;
+    IF (SELECT count(*) FROM position_snapshot) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: DELETE on position_snapshot left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the delete' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: DELETE on position_snapshot accepted'; END; END $$;
 DO $$ BEGIN BEGIN
     TRUNCATE position_snapshot CASCADE;
-    RAISE EXCEPTION 'FAIL: TRUNCATE on position_snapshot was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: TRUNCATE on position_snapshot refused'; END; END $$;
+    IF (SELECT count(*) FROM position_snapshot) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: TRUNCATE on position_snapshot left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the truncate' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: TRUNCATE on position_snapshot accepted'; END; END $$;
 
 -- ---------------------------------------------------------------------------
--- Test 8: run guard
+-- Test 8: run guard (UPDATE limits stay; DELETE and TRUNCATE are accepted, spec A024)
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -527,14 +554,23 @@ DO $$ BEGIN BEGIN
 EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: UPDATE of run.starting_cash refused'; END; END $$;
 
 DO $$ BEGIN BEGIN
+    DELETE FROM order_outcome;
+    DELETE FROM order_intent;
+    DELETE FROM settlement;
+    DELETE FROM position_snapshot;
     DELETE FROM run;
-    RAISE EXCEPTION 'FAIL: DELETE on run was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: DELETE on run refused'; END; END $$;
-
+    IF (SELECT count(*) FROM run) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: DELETE on run left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the delete' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: DELETE on run accepted'; END; END $$;
 DO $$ BEGIN BEGIN
     TRUNCATE run CASCADE;
-    RAISE EXCEPTION 'FAIL: TRUNCATE on run was accepted';
-EXCEPTION WHEN restrict_violation THEN RAISE NOTICE 'PASS: TRUNCATE on run refused'; END; END $$;
+    IF (SELECT count(*) FROM run) <> 0 THEN
+        RAISE EXCEPTION 'FAIL: TRUNCATE on run left rows';
+    END IF;
+    RAISE EXCEPTION 'rollback the truncate' USING ERRCODE = 'no_data_found';
+EXCEPTION WHEN no_data_found THEN RAISE NOTICE 'PASS: TRUNCATE on run accepted'; END; END $$;
 
 -- ---------------------------------------------------------------------------
 -- Test 9: a market referenced by an order_intent cannot be deleted

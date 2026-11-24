@@ -29,10 +29,10 @@ run -> position_snapshot   (also references market)
 | `market` | A Kalshi yes/no contract on a strike within an event | `ticker` | no (settled rows are frozen, see Market guard) |
 | `candle` | A quote bar (bid, ask, volume) for one market at a bar end time | `(market_ticker, ts)` | yes |
 | `run` | One backtest run (strategy, params, code version, cash, date range, status) | `run_id` (generated) | no, see run guard |
-| `order_intent` | An order the strategy decided to place | `intent_id` (generated) | yes |
-| `order_outcome` | What happened to an intent: filled, rejected or blocked | `outcome_id` (generated) | yes |
-| `settlement` | The settlement of a run's position in a market | `(run_id, market_ticker)` | yes |
-| `position_snapshot` | End-of-day open position of a run in a market | `(run_id, as_of_date, market_ticker)` | yes |
+| `order_intent` | An order the strategy decided to place | `intent_id` (generated) | no, never updated; deleted with its run |
+| `order_outcome` | What happened to an intent: filled, rejected or blocked | `outcome_id` (generated) | no, never updated; deleted with its run |
+| `settlement` | The settlement of a run's position in a market | `(run_id, market_ticker)` | no, never updated; deleted with its run |
+| `position_snapshot` | End-of-day open position of a run in a market | `(run_id, as_of_date, market_ticker)` | no, never updated; deleted with its run |
 
 ## Rules the database enforces
 
@@ -59,15 +59,17 @@ run -> position_snapshot   (also references market)
 
 **`net_units` sign convention** (`settlement`, `position_snapshot`): signed, in YES units. Positive = long YES, negative = long NO. Never 0.
 
-**Foreign keys.** Every `REFERENCES` uses the default `ON DELETE NO ACTION`, so a referenced row can never be deleted.
+**Foreign keys.** Every `REFERENCES` uses the default `ON DELETE NO ACTION`, so a referenced row can never be deleted while a child row references it (delete children before their parent).
 - `event` has a composite foreign key `(series_ticker, underlying_id)` to `series (ticker, underlying_id)`, so an event's underlying must match its series' underlying. `series` has `UNIQUE (ticker, underlying_id)` as the target.
 - `event` has `UNIQUE (underlying_id, event_date)`: one event per underlying per day. This catches duplicate events that Kalshi created under a renamed ticker.
 
-**Append-only triggers.** On `candle`, `order_intent`, `order_outcome`, `settlement` and `position_snapshot`, UPDATE, DELETE and TRUNCATE are refused with SQLSTATE `restrict_violation` (function `forbid_change()`).
+**Append-only triggers.** On `candle`, UPDATE, DELETE and TRUNCATE are refused with SQLSTATE `restrict_violation` (function `forbid_change()`). On `order_intent`, `order_outcome`, `settlement` and `position_snapshot`, only UPDATE is refused.
+
+**Saved runs.** A saved run and its `order_intent`, `order_outcome`, `settlement` and `position_snapshot` rows may be deleted (children first, no cascade) but never updated; `candle`, `market` and the weather tables are never deleted (migration 0004).
 
 **Market guard.** On `market`, an open market (`is_settled = false`) may be updated, including the update that sets `result` and `settled_at`, but not its `ticker` or `event_ticker`. A settled market (`is_settled = true`) cannot be updated at all. DELETE and TRUNCATE are always refused. All with `restrict_violation` (function `market_guard()`). `is_settled` is a generated column, `result IS NOT NULL`.
 
-**Run guard.** On `run`, only `status` and `finished_at` may be updated (function `run_guard()`). Any other changed column is refused, DELETE is refused, and TRUNCATE is refused. All with `restrict_violation`.
+**Run guard.** On `run`, only `status` and `finished_at` may be updated (function `run_guard()`). Any other changed column is refused with `restrict_violation`. DELETE and TRUNCATE on `run` are accepted.
 
 ## Units
 
@@ -90,7 +92,7 @@ Parents before children:
 9. `settlement`
 10. `position_snapshot`
 
-A mistake in an append-only table cannot be fixed with UPDATE or DELETE. The only way to wipe the data is to drop the Docker volume, and that should be done only deliberately. The compose file names it
+A mistake in a data table (`candle`, `market`, the weather tables) cannot be fixed with UPDATE or DELETE; a saved run is deleted whole, never edited. The only way to wipe the data is to drop the Docker volume, and that should be done only deliberately. The compose file names it
 `kalbt_recon_pgdata`; Docker prefixes it with the project (folder) name, so from this worktree it
 is `kalbacktester-track-b_kalbt_recon_pgdata` (`docker volume ls` shows it).
 

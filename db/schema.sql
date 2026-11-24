@@ -18,14 +18,10 @@ BEGIN
 END;
 $$;
 
--- run guard: only status and finished_at may change; DELETE is refused.
+-- run guard: only status and finished_at may change; saved runs may be deleted.
 CREATE FUNCTION run_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    IF TG_OP = 'DELETE' THEN
-        RAISE EXCEPTION 'DELETE on run is not allowed'
-            USING ERRCODE = 'restrict_violation';
-    END IF;
     -- compare the whole row except the two columns that may change
     IF (to_jsonb(NEW) - 'status' - 'finished_at')
        IS DISTINCT FROM (to_jsonb(OLD) - 'status' - 'finished_at') THEN
@@ -144,7 +140,7 @@ CREATE TABLE run (
 );
 
 -- ---------------------------------------------------------------------------
--- 7. order_intent (append-only)
+-- 7. order_intent (never updated)
 -- ---------------------------------------------------------------------------
 CREATE TABLE order_intent (
     intent_id     bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -161,7 +157,7 @@ CREATE TABLE order_intent (
 );
 
 -- ---------------------------------------------------------------------------
--- 8. order_outcome (append-only)
+-- 8. order_outcome (never updated)
 -- ---------------------------------------------------------------------------
 CREATE TABLE order_outcome (
     outcome_id  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -183,7 +179,7 @@ CREATE TABLE order_outcome (
 );
 
 -- ---------------------------------------------------------------------------
--- 9. settlement (append-only)
+-- 9. settlement (never updated)
 -- ---------------------------------------------------------------------------
 CREATE TABLE settlement (
     run_id        bigint      NOT NULL REFERENCES run (run_id),
@@ -199,7 +195,7 @@ CREATE TABLE settlement (
 );
 
 -- ---------------------------------------------------------------------------
--- 10. position_snapshot (append-only)
+-- 10. position_snapshot (never updated)
 -- ---------------------------------------------------------------------------
 CREATE TABLE position_snapshot (
     run_id        bigint  NOT NULL REFERENCES run (run_id),
@@ -213,7 +209,7 @@ CREATE TABLE position_snapshot (
 );
 
 -- ---------------------------------------------------------------------------
--- Triggers: append-only tables
+-- Triggers: candle (append-only) and the trading tables (saved runs may be deleted, never updated)
 -- ---------------------------------------------------------------------------
 CREATE TRIGGER candle_no_update_delete
     BEFORE UPDATE OR DELETE ON candle
@@ -222,33 +218,21 @@ CREATE TRIGGER candle_no_truncate
     BEFORE TRUNCATE ON candle
     FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
-CREATE TRIGGER order_intent_no_update_delete
-    BEFORE UPDATE OR DELETE ON order_intent
+CREATE TRIGGER order_intent_no_update
+    BEFORE UPDATE ON order_intent
     FOR EACH ROW EXECUTE FUNCTION forbid_change();
-CREATE TRIGGER order_intent_no_truncate
-    BEFORE TRUNCATE ON order_intent
-    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
-CREATE TRIGGER order_outcome_no_update_delete
-    BEFORE UPDATE OR DELETE ON order_outcome
+CREATE TRIGGER order_outcome_no_update
+    BEFORE UPDATE ON order_outcome
     FOR EACH ROW EXECUTE FUNCTION forbid_change();
-CREATE TRIGGER order_outcome_no_truncate
-    BEFORE TRUNCATE ON order_outcome
-    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
-CREATE TRIGGER settlement_no_update_delete
-    BEFORE UPDATE OR DELETE ON settlement
+CREATE TRIGGER settlement_no_update
+    BEFORE UPDATE ON settlement
     FOR EACH ROW EXECUTE FUNCTION forbid_change();
-CREATE TRIGGER settlement_no_truncate
-    BEFORE TRUNCATE ON settlement
-    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
-CREATE TRIGGER position_snapshot_no_update_delete
-    BEFORE UPDATE OR DELETE ON position_snapshot
+CREATE TRIGGER position_snapshot_no_update
+    BEFORE UPDATE ON position_snapshot
     FOR EACH ROW EXECUTE FUNCTION forbid_change();
-CREATE TRIGGER position_snapshot_no_truncate
-    BEFORE TRUNCATE ON position_snapshot
-    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
 -- Triggers: market
 CREATE TRIGGER market_guard
@@ -260,11 +244,8 @@ CREATE TRIGGER market_no_truncate
 
 -- Triggers: run
 CREATE TRIGGER run_guard
-    BEFORE UPDATE OR DELETE ON run
+    BEFORE UPDATE ON run
     FOR EACH ROW EXECUTE FUNCTION run_guard();
-CREATE TRIGGER run_no_truncate
-    BEFORE TRUNCATE ON run
-    FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
 -- ---------------------------------------------------------------------------
 -- Comments
@@ -311,7 +292,7 @@ COMMENT ON COLUMN candle.yes_ask IS 'Best YES ask in dollars, strictly between 0
 COMMENT ON COLUMN candle.volume IS 'Contracts traded in the bar.';
 
 -- run
-COMMENT ON TABLE  run IS 'One backtest run; only status and finished_at can be updated, never deleted.';
+COMMENT ON TABLE  run IS 'One backtest run; only status and finished_at can be updated; a saved run may be deleted.';
 COMMENT ON COLUMN run.run_id IS 'Generated run id.';
 COMMENT ON COLUMN run.strategy IS 'Name of the strategy that was run.';
 COMMENT ON COLUMN run.params IS 'Strategy parameters as JSON.';
@@ -324,7 +305,7 @@ COMMENT ON COLUMN run.finished_at IS 'When the run ended (UTC); null while runni
 COMMENT ON COLUMN run.status IS 'running, done, failed or discarded.';
 
 -- order_intent
-COMMENT ON TABLE  order_intent IS 'An order the strategy decided to place; append-only.';
+COMMENT ON TABLE  order_intent IS 'An order the strategy decided to place; never updated, deleted only with its run.';
 COMMENT ON COLUMN order_intent.intent_id IS 'Generated intent id.';
 COMMENT ON COLUMN order_intent.run_id IS 'The run that made the decision.';
 COMMENT ON COLUMN order_intent.decided_at IS 'When the strategy decided (UTC).';
@@ -335,7 +316,7 @@ COMMENT ON COLUMN order_intent.quantity IS 'Requested number of contracts, great
 COMMENT ON COLUMN order_intent.reason IS 'Why the strategy wanted the order, if recorded.';
 
 -- order_outcome
-COMMENT ON TABLE  order_outcome IS 'What happened to an order intent: filled, rejected or blocked; append-only.';
+COMMENT ON TABLE  order_outcome IS 'What happened to an order intent: filled, rejected or blocked; never updated, deleted only with its run.';
 COMMENT ON COLUMN order_outcome.outcome_id IS 'Generated outcome id.';
 COMMENT ON COLUMN order_outcome.intent_id IS 'The intent this outcome belongs to.';
 COMMENT ON COLUMN order_outcome.occurred_at IS 'When the outcome happened (UTC).';
@@ -346,7 +327,7 @@ COMMENT ON COLUMN order_outcome.fee IS 'Fee in dollars, 0 or more; null unless f
 COMMENT ON COLUMN order_outcome.reason_code IS 'Why the order was rejected or blocked; required for those, optional for filled.';
 
 -- settlement
-COMMENT ON TABLE  settlement IS 'Settlement of a run position in a market; append-only.';
+COMMENT ON TABLE  settlement IS 'Settlement of a run position in a market; never updated, deleted only with its run.';
 COMMENT ON COLUMN settlement.run_id IS 'The run that held the position.';
 COMMENT ON COLUMN settlement.market_ticker IS 'The market that settled.';
 COMMENT ON COLUMN settlement.settled_at IS 'When the market settled (UTC).';
@@ -355,7 +336,7 @@ COMMENT ON COLUMN settlement.net_units IS 'Signed position in YES units at settl
 COMMENT ON COLUMN settlement.payout IS 'Dollars paid out on the position, 0 or more.';
 
 -- position_snapshot
-COMMENT ON TABLE  position_snapshot IS 'End-of-day open position of a run in a market; append-only.';
+COMMENT ON TABLE  position_snapshot IS 'End-of-day open position of a run in a market; never updated, deleted only with its run.';
 COMMENT ON COLUMN position_snapshot.run_id IS 'The run holding the position.';
 COMMENT ON COLUMN position_snapshot.as_of_date IS 'The date the snapshot is taken for.';
 COMMENT ON COLUMN position_snapshot.market_ticker IS 'The market the position is in.';

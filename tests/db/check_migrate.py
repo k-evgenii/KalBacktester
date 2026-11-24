@@ -90,16 +90,17 @@ try:
            rows == {"0001_baseline": sha(REAL_MIGRATIONS / "0001_baseline.sql")}, rows)
     cli = subprocess.run(["uv", "run", "python", "-m", "db.migrate", "--dbname", TEST_DB],
                          cwd=ROOT, capture_output=True, text=True)
-    report("1b CLI migrate on fresh build applies 0002 (data migration, not in schema.sql)",
-           cli.returncode == 0 and "applied 0002_us_daily_high_stations" in cli.stdout,
+    report("1b CLI migrate on fresh build applies 0002, 0003 and 0004 without error",
+           cli.returncode == 0 and "applied 0002_us_daily_high_stations" in cli.stdout
+           and "applied 0003_portfolio_views" in cli.stdout and "applied 0004_deletable_runs" in cli.stdout,
            (cli.returncode, cli.stdout, cli.stderr[-300:]))
     cli2 = subprocess.run(["uv", "run", "python", "-m", "db.migrate", "--dbname", TEST_DB],
                           cwd=ROOT, capture_output=True, text=True)
     report("1b CLI migrate a second time prints 'nothing to apply'",
            cli2.returncode == 0 and "nothing to apply" in cli2.stdout, (cli2.returncode, cli2.stdout, cli2.stderr[-300:]))
-    report("1c the real migrations folder holds exactly 0001_baseline.sql, 0002_us_daily_high_stations.sql and 0003_portfolio_views.sql",
+    report("1c the real migrations folder holds exactly 0001 to 0004",
            sorted(p.name for p in REAL_MIGRATIONS.glob("*.sql")) ==
-           ["0001_baseline.sql", "0002_us_daily_high_stations.sql", "0003_portfolio_views.sql"])
+           ["0001_baseline.sql", "0002_us_daily_high_stations.sql", "0003_portfolio_views.sql", "0004_deletable_runs.sql"])
 
     # ---- 2. extra migration applied once
     copy_dir = tmp / "migrations_copy"

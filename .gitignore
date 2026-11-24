@@ -65,3 +65,4 @@ backtest/reports/
 
 # backfill runner log
 ingest/backfill_log.jsonl
+ingest/backfill_run_*.out
