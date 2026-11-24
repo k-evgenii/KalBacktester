@@ -1,4 +1,4 @@
-"""Checks the backtest harness (spec B017, agreed tests 1 to 8, plus a few extra).
+"""Checks the backtest harness (spec B017, reworked by B019: runs are throwaway unless --save).
 
 Two throwaway databases, both dropped in a finally:
   kalbt_b017_test  restored from the newest dump in /home/kondr/KalBacktester/backups/db/
@@ -279,77 +279,132 @@ def new_run_rows(conn, ticker):
         " ORDER BY run_id", (ticker,)).fetchall()
 
 
-def test_03_real_run(conn, series, state):
+def runs_per_series(conn, series):
+    """{series_ticker: number of forecast_favourite runs that touch the series}, read from the copy."""
+    return {s["series_ticker"]: len(new_run_rows(conn, s["series_ticker"])) for s in series}
+
+
+def expected_status(conn, s):
+    """'ran' if the strategy builds intents for the series, else 'no_intents' (computed from the copy)."""
+    intents, _ = intents_for_series(conn, s["series_ticker"], s["date_start"], s["date_end"],
+                                    dict(DEFAULTS))
+    return "ran" if intents else "no_intents"
+
+
+def check_default_results(conn, series, results):
+    """Shared by 03 and 04: every series ran (or had no intents), PASS, not saved, run rolled back."""
+    check([r["series_ticker"] for r in results] == [s["series_ticker"] for s in series],
+          f"report series {[r['series_ticker'] for r in results]}")
+    ran = [r for r in results if r["status"] == "ran"]
+    check(any(r["series_ticker"] == "KXHIGHNY" for r in ran), "KXHIGHNY did not run")
+    for s, r in zip(series, results):
+        want = expected_status(conn, s)
+        check(r["status"] == want, f"{r['series_ticker']} status {r['status']}, expected {want}")
+    for r in ran:
+        check(r["saved"] is False, f"{r['series_ticker']} saved {r['saved']}")
+        check(r["recon_verdict"] == "PASS" and r["failed_checks"] == [],
+              f"{r['series_ticker']} report verdict {r['recon_verdict']} {r['failed_checks']}")
+        gone = conn.execute("SELECT count(*) FROM run WHERE run_id = %s", (r["run_id"],)).fetchone()[0]
+        check(gone == 0, f"{r['series_ticker']} run {r['run_id']} is still in the table")
+    for r in results:
+        if r["status"] == "no_intents":
+            check(r["saved"] is False, f"{r['series_ticker']} saved {r['saved']}")
+    return ran
+
+
+def test_03_default_run(conn, series, state):
     before = row_counts(conn)
     reports_before = report_files()
     result = cli("--db", TEST_DB)
     print(result.stdout[-3000:])
     check(result.returncode == 0, f"exit {result.returncode}: {result.stderr[-600:]}")
     results = newest_new_report(reports_before)
-    state["first_results"] = results
-    check([r["series_ticker"] for r in results] == [s["series_ticker"] for s in series],
-          f"report series {[r['series_ticker'] for r in results]}")
-    ran = [r for r in results if r["status"] == "ran"]
-    check(any(r["series_ticker"] == "KXHIGHNY" for r in ran), "KXHIGHNY did not run")
-    for r in results:
-        check(r["status"] in ("ran", "no_intents"), f"{r['series_ticker']} status {r['status']}")
-    after = row_counts(conn)
-    check(after["run"] == before["run"] + len(ran), f"runs {before['run']} -> {after['run']}, ran {len(ran)}")
-    strategy_params = dict(DEFAULTS)
-    for r in ran:
-        rows = new_run_rows(conn, r["series_ticker"])
-        check(len(rows) == 1, f"{r['series_ticker']}: {len(rows)} runs")
-        run_id, strategy, params, status = rows[0]
-        check(run_id == r["run_id"], f"{r['series_ticker']} report run_id {r['run_id']} vs table {run_id}")
-        check(strategy == "forecast_favourite" and status == "done", f"strategy {strategy} status {status}")
-        check(r["recon_verdict"] == "PASS" and r["failed_checks"] == [],
-              f"{r['series_ticker']} report verdict {r['recon_verdict']} {r['failed_checks']}")
-        verdict = check_run(conn, run_id)["verdict"]
-        check(verdict == "PASS", f"{r['series_ticker']} run {run_id} recheck verdict {verdict}")
-        contained = conn.execute("SELECT %s::jsonb <@ params FROM run WHERE run_id = %s",
-                                 (Jsonb(strategy_params), run_id)).fetchone()[0]
-        check(contained, f"params {params} lack {strategy_params}")
-        for key in ENGINE_DEFAULT_KEYS:
-            check(key in params, f"params {params} lack engine key {key}")
-        check(params["quantity"] == 10 and params["decision_time_lst"] == "09:00"
-              and params["lead_day"] == 1 and params["min_models"] == 5, f"params {params}")
+    ran = check_default_results(conn, series, results)
+    check(row_counts(conn) == before, f"trading tables changed: {before} -> {row_counts(conn)}")
+    check("not saved" in result.stdout, "stdout lacks 'not saved'")
     state["ran"] = ran
 
 
-def test_04_rerun_writes_nothing(conn, series, state):
+def test_04_repeat(conn, series, state):
     before = row_counts(conn)
     reports_before = report_files()
     result = cli("--db", TEST_DB)
     check(result.returncode == 0, f"exit {result.returncode}: {result.stderr[-600:]}")
-    check(row_counts(conn) == before, f"tables changed: {before} -> {row_counts(conn)}")
     results = newest_new_report(reports_before)
-    first = {r["series_ticker"]: r for r in state["first_results"]}
-    for r in results:
-        old = first[r["series_ticker"]]
-        if old["status"] == "ran":
-            check(r["status"] == "already_done", f"{r['series_ticker']} status {r['status']}")
-            check(r["run_id"] == old["run_id"], f"{r['series_ticker']} run_id {r['run_id']} vs {old['run_id']}")
-        else:
-            check(r["status"] == "no_intents", f"{r['series_ticker']} status {r['status']}")
+    check_default_results(conn, series, results)
+    check(row_counts(conn) == before, f"trading tables changed: {before} -> {row_counts(conn)}")
 
 
-def test_05_changed_param(conn, series, state):
-    ny = [s for s in series if s["series_ticker"] == "KXHIGHNY"][0]
+def check_saved_run(ran, runs_before, runs_after):
+    """One more run per ran series, PASS on a new connection, strategy and params stored."""
+    for r in ran:
+        ticker = r["series_ticker"]
+        check(runs_after[ticker] == runs_before[ticker] + 1,
+              f"{ticker}: runs {runs_before[ticker]} -> {runs_after[ticker]}")
+        check(r["saved"] is True, f"{ticker} saved {r['saved']}")
+        check(r["recon_verdict"] == "PASS" and r["failed_checks"] == [],
+              f"{ticker} report verdict {r['recon_verdict']} {r['failed_checks']}")
+        with connect(dbname=TEST_DB) as other:
+            row = other.execute("SELECT strategy, status FROM run WHERE run_id = %s",
+                                (r["run_id"],)).fetchone()
+            check(row == ("forecast_favourite", "done"), f"{ticker} run {r['run_id']} row {row}")
+            verdict = check_run(other, r["run_id"])["verdict"]
+            check(verdict == "PASS", f"{ticker} run {r['run_id']} recheck verdict {verdict}")
+            contained = other.execute("SELECT %s::jsonb <@ params FROM run WHERE run_id = %s",
+                                      (Jsonb(dict(DEFAULTS)), r["run_id"])).fetchone()[0]
+            params = other.execute("SELECT params FROM run WHERE run_id = %s",
+                                   (r["run_id"],)).fetchone()[0]
+            check(contained, f"params {params} lack {dict(DEFAULTS)}")
+            for key in ("quantity", "decision_time_lst", "lead_day", "min_models"):
+                check(key in params, f"params {params} lack {key}")
+            for key in ENGINE_DEFAULT_KEYS:
+                check(key in params, f"params {params} lack engine key {key}")
+
+
+def save_once(conn, series):
+    """One --save CLI call. Returns (ran results, runs per series before, after)."""
+    before_runs = runs_per_series(conn, series)
     before = row_counts(conn)
-    params = dict(DEFAULTS, quantity=5)
-    result = run_series(conn, ny, params, False)
-    check(result["status"] == "ran", f"status {result['status']}")
-    old_id = [r for r in state["ran"] if r["series_ticker"] == "KXHIGHNY"][0]["run_id"]
-    check(result["run_id"] is not None and result["run_id"] != old_id, f"run_id {result['run_id']}")
-    check(row_counts(conn)["run"] == before["run"] + 1, "expected exactly one new run")
-    check(result["recon_verdict"] == "PASS", f"verdict {result['recon_verdict']}")
-    quantity = conn.execute("SELECT params->>'quantity' FROM run WHERE run_id = %s",
-                            (result["run_id"],)).fetchone()[0]
-    check(quantity == "5", f"stored quantity {quantity}")
-    # the same quantity-5 call again is now a repeat
-    again = run_series(conn, ny, params, False)
-    check(again["status"] == "already_done" and again["run_id"] == result["run_id"],
-          f"repeat gave {again['status']} {again['run_id']}")
+    reports_before = report_files()
+    result = cli("--db", TEST_DB, "--save")
+    check(result.returncode == 0, f"exit {result.returncode}: {result.stderr[-600:]}")
+    results = newest_new_report(reports_before)
+    check([r["series_ticker"] for r in results] == [s["series_ticker"] for s in series],
+          f"report series {[r['series_ticker'] for r in results]}")
+    ran = [r for r in results if r["status"] == "ran"]
+    check(any(r["series_ticker"] == "KXHIGHNY" for r in ran), "KXHIGHNY did not run")
+    for s, r in zip(series, results):
+        want = expected_status(conn, s)
+        check(r["status"] == want, f"{r['series_ticker']} status {r['status']}, expected {want}")
+    after = row_counts(conn)
+    check(after["run"] == before["run"] + len(ran), f"runs {before['run']} -> {after['run']}, ran {len(ran)}")
+    check(len(ran) >= 1, "nothing ran")
+    return ran, before_runs, runs_per_series(conn, series), results
+
+
+def test_05_save(conn, series, state):
+    ran, runs_before, runs_after, results = save_once(conn, series)
+    check_saved_run(ran, runs_before, runs_after)
+    state["saved_ids"] = {r["series_ticker"]: r["run_id"] for r in ran}
+
+
+def test_05b_save_twice(conn, series, state):
+    ran, runs_before, runs_after, results = save_once(conn, series)
+    check_saved_run(ran, runs_before, runs_after)
+    for r in ran:
+        check(r["run_id"] != state["saved_ids"][r["series_ticker"]],
+              f"{r['series_ticker']} second --save reused run {r['run_id']}")
+
+
+def test_09_dry_and_save(conn):
+    before = row_counts(conn)
+    reports_before = report_files()
+    result = cli("--db", TEST_DB, "--dry", "--save")
+    check(result.returncode == 2, f"exit {result.returncode}")
+    check("not allowed with" in result.stderr or "--dry" in result.stderr,
+          f"stderr does not show the argparse error: {result.stderr[-400:]}")
+    check(row_counts(conn) == before, "tables changed")
+    check(report_files() == reports_before, "a report file was written")
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +428,7 @@ def test_06_two_city_fixture(conn):
     before = row_counts(conn)
     series = loaded_series(conn)
     for s in series:
-        result = run_series(conn, s, dict(DEFAULTS), False)
+        result = run_series(conn, s, dict(DEFAULTS), False, True)
         check(result["status"] == "ran", f"{s['series_ticker']} status {result['status']}")
         check(result["n_intents"] == s["n_events"], f"{s['series_ticker']} intents {result['n_intents']}")
         check(result["recon_verdict"] == "PASS" and result["failed_checks"] == [],
@@ -387,7 +442,7 @@ def test_06_two_city_fixture(conn):
     run_count = row_counts(conn)["run"]
     s3 = {"series_ticker": "S3", "underlying_id": "U3", "station_id": None,
           "date_start": date(2026, 3, 1), "date_end": date(2026, 3, 1), "n_events": 1}
-    result = run_series(conn, s3, dict(DEFAULTS), False)
+    result = run_series(conn, s3, dict(DEFAULTS), False, True)
     check(result["status"] == "no_intents", f"S3 status {result['status']}")
     check(result["skipped_days"] == {"no_station": 1}, f"S3 skipped {result['skipped_days']}")
     check(result["n_intents"] == 0 and result["run_id"] is None, f"S3 {result}")
@@ -395,19 +450,23 @@ def test_06_two_city_fixture(conn):
     check(row_counts(conn)["run"] == run_count, "S3 wrote a run row")
 
 
-def test_09_fixture_dry_and_repeat(conn):
-    """(extra) a dry call on the fixture writes nothing; S1's first run is then repeated."""
+def test_12_fixture_save_flag(conn):
+    """(extra) run_series: save False rolls the run back, save True keeps it; both reconcile PASS."""
     s1 = [s for s in loaded_series(conn) if s["series_ticker"] == "S1"][0]
     before = row_counts(conn)
-    result = run_series(conn, s1, dict(DEFAULTS, quantity=3), True)
-    check(result["status"] == "dry" and result["run_id"] is None, f"dry gave {result['status']}")
-    check(result["n_intents"] == 2, f"n_intents {result['n_intents']}")
+    thrown = run_series(conn, s1, dict(DEFAULTS, quantity=3), False, False)
+    check(thrown["status"] == "ran" and thrown["saved"] is False, f"{thrown['status']} {thrown['saved']}")
+    check(thrown["recon_verdict"] == "PASS", f"verdict {thrown['recon_verdict']}")
+    check(row_counts(conn) == before, "a run without save left rows")
+    dry = run_series(conn, s1, dict(DEFAULTS, quantity=3), True, False)
+    check(dry["status"] == "dry" and dry["run_id"] is None and dry["saved"] is False, f"dry {dry}")
     check(row_counts(conn) == before, "dry run wrote rows")
-    existing = run_series(conn, s1, dict(DEFAULTS), False)
-    first_id = conn.execute("SELECT min(run_id) FROM run").fetchone()[0]
-    check(existing["status"] == "already_done", f"status {existing['status']}")
-    check(existing["run_id"] == first_id, f"run_id {existing['run_id']} vs first {first_id}")
-    check(row_counts(conn) == before, "already_done wrote rows")
+    kept = run_series(conn, s1, dict(DEFAULTS, quantity=3), False, True)
+    check(kept["status"] == "ran" and kept["saved"] is True, f"{kept['status']} {kept['saved']}")
+    check(row_counts(conn)["run"] == before["run"] + 1, "saved run missing")
+    again = run_series(conn, s1, dict(DEFAULTS, quantity=3), False, True)
+    check(again["status"] == "ran" and again["run_id"] != kept["run_id"], f"repeat {again['status']}")
+    check(row_counts(conn)["run"] == before["run"] + 2, "no duplicate guard expected")
 
 
 def test_10_skipped_days(conn):
@@ -415,11 +474,11 @@ def test_10_skipped_days(conn):
     a series dict that widens the range to include D3 and D5 still gets intents and a count."""
     s1 = {"series_ticker": "S1", "underlying_id": "U1", "station_id": "KTST",
           "date_start": date(2026, 3, 1), "date_end": date(2026, 3, 5), "n_events": 4}
-    result = run_series(conn, s1, dict(DEFAULTS, quantity=4), True)
+    result = run_series(conn, s1, dict(DEFAULTS, quantity=4), True, False)
     check(result["status"] == "dry", f"status {result['status']}")
     check(result["n_intents"] == 4, f"n_intents {result['n_intents']}")
     check(result["skipped_days"] == {}, f"skipped_days {result['skipped_days']}")
-    wide = run_series(conn, s1, dict(DEFAULTS, min_models=6, quantity=4), True)
+    wide = run_series(conn, s1, dict(DEFAULTS, min_models=6, quantity=4), True, False)
     check(wide["status"] == "no_intents", f"status {wide['status']}")
     check(wide["skipped_days"] == {"too_few_models": 4}, f"skipped_days {wide['skipped_days']}")
 
@@ -478,18 +537,18 @@ def main():
             series = loaded_series(conn)
             run_test("02 --dry writes nothing and lists each series with its intent count",
                      test_02_dry, conn, series)
-            run_test("03 real run: one run per series, PASS, strategy and params stored",
-                     test_03_real_run, conn, series, state)
-            if "first_results" in state:
-                run_test("04 rerun writes nothing and reports already_done with the first run ids",
-                         test_04_rerun_writes_nothing, conn, series, state)
+            run_test("03 default run: every series ran, PASS, saved false, tables unchanged",
+                     test_03_default_run, conn, series, state)
+            run_test("04 repeat: a second default run writes nothing and reconciles PASS",
+                     test_04_repeat, conn, series, state)
+            run_test("05 --save: one more run per series, PASS on a new connection, params stored",
+                     test_05_save, conn, series, state)
+            if "saved_ids" in state:
+                run_test("05b a second --save makes one more run per series (no duplicate guard)",
+                         test_05b_save_twice, conn, series, state)
             else:
-                report("04 rerun writes nothing and reports already_done", False, "test 03 gave no results")
-            if "ran" in state:
-                run_test("05 changed strategy param (quantity 5) makes a new run",
-                         test_05_changed_param, conn, series, state)
-            else:
-                report("05 changed strategy param makes a new run", False, "test 03 gave no runs")
+                report("05b a second --save makes one more run per series", False, "test 05 gave no runs")
+            run_test("09 --dry with --save: argparse error, nothing written", test_09_dry_and_save, conn)
             run_test("07 --db missing: argparse error, nothing written", test_07_missing_db, conn)
             run_test("11 two back-to-back --dry calls write two report files with microsecond names",
                      test_11_unique_report_names)
@@ -502,8 +561,8 @@ def main():
                      test_01b_fixture_loaded_series, fix)
             run_test("06 two-city fixture: both series run PASS; city without station gives no_intents",
                      test_06_two_city_fixture, fix)
-            run_test("09 (extra) dry call writes nothing; same params again is already_done",
-                     test_09_fixture_dry_and_repeat, fix)
+            run_test("12 (extra) run_series save False rolls back, save True keeps, no duplicate guard",
+                     test_12_fixture_save_flag, fix)
             run_test("10 (extra) skipped_days counts the reasons that occurred",
                      test_10_skipped_days, fix)
     finally:

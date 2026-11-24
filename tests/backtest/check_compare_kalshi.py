@@ -118,7 +118,9 @@ def load_fixture(conn):
 def run_buy(conn, name, ticker, side="yes", action="buy", quantity=12):
     intents = [{"decided_at": at(6, 1, 2, 0), "market_ticker": ticker, "side": side,
                 "action": action, "quantity": quantity, "reason": None}]
-    return match_intents(conn, name, {}, intents)
+    run_id = match_intents(conn, name, {}, intents)
+    conn.commit()  # compare_run reads the run from other connections
+    return run_id
 
 
 # ---------------------------------------------------------------------------

@@ -49,8 +49,8 @@ The engine's rules, in one line each:
 - **Records:** settlements, plus a snapshot at the end of each UTC day.
 
 ## 5. Live database facts
-- **Trading tables:** they hold run 31 only. They are append-only, so every live run is
-  permanent.
+- **Trading tables:** runs are rolled back unless `--save` (B019). Saved runs are logs: never
+  edited, deletable after migration 0004. Runs 31 and 32 are saved.
 - **Before any live run:** take a backup with
   `uv run python -m db.backup dump --reason <why>`.
 - **No DDL on live:** never run DDL against the live database `kalbt`, not even inside a
