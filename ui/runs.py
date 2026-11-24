@@ -3,7 +3,7 @@ from datetime import UTC
 
 import portfolio.check_run
 import recon.check_run
-from ui.layout import MISSING, chip, count, esc, money, page, price
+from ui.layout import MISSING, chip, count, esc, money, page, price, table, td
 
 STATUS_CHIPS = {
     "running": ("Running", "warn"),
@@ -27,17 +27,6 @@ def utc_text(value, fmt):
     if value is None:
         return MISSING
     return value.astimezone(UTC).strftime(fmt)
-
-
-def table(head, rows, attrs=""):
-    """head: [(label, is_number)]; rows: list of ready-made <tr> strings."""
-    cells = "".join(f'<th class="num">{label}</th>' if is_num else f"<th>{label}</th>"
-                    for label, is_num in head)
-    return f"<table{attrs}><thead><tr>{cells}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
-
-
-def td(content, css=""):
-    return f'<td class="{css}">{content}</td>' if css else f"<td>{content}</td>"
 
 
 # ---------- runs list ----------

@@ -56,6 +56,17 @@ def count(value):
     return f"{value.normalize():,f}"
 
 
+def table(head, rows, attrs=""):
+    """head: [(label, is_number)]; rows: list of ready-made <tr> strings."""
+    cells = "".join(f'<th class="num">{label}</th>' if is_num else f"<th>{label}</th>"
+                    for label, is_num in head)
+    return f"<table{attrs}><thead><tr>{cells}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+
+
+def td(content, css=""):
+    return f'<td class="{css}">{content}</td>' if css else f"<td>{content}</td>"
+
+
 def page(title, body, active):
     current = ' aria-current="page"' if active == "runs" else ""
     return f"""<!doctype html>
