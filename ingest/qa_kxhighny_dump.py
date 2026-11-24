@@ -5,13 +5,14 @@ Reads the dump files and the database (SELECT only), prints one line per check, 
 _qa_report.json into the dump folder, exits 0 on PASS and 1 on BLOCK.
 """
 import json
+import re
 import sys
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from db.connect import connect
-from ingest.load_kxhighny_dump import DUMP_DIR, candle_row, event_date
+from ingest.load_kxhighny_dump import DUMP_DIR, TWC_FROM, candle_row, event_date, settlement_source
 
 MISSING = object()  # a bar key that is absent under both key styles
 MARKET_FIELDS = ["ticker", "event_ticker", "strike_type", "open_time", "close_time", "status"]
@@ -487,7 +488,7 @@ def check_21(ctx):
 
 def check_22(ctx, conn):
     with conn.cursor() as cur:
-        cur.execute("""SELECT s.station_id, s.cli_pil
+        cur.execute("""SELECT s.station_id, s.cli_pil, s.rules_names
                        FROM series se
                        JOIN underlying u ON u.underlying_id = se.underlying_id
                        JOIN station s    ON s.station_id = u.station_id
@@ -497,11 +498,20 @@ def check_22(ctx, conn):
         return {"id": 22, "name": "rules name the station", "severity": "BLOCK", "status": "fail",
                 "detail": "station for KXHIGHNY unknown: seed the station and link the underlying before loading",
                 "examples": []}
-    needle = "(" + row[1] + ")"
+    station_id, cli_pil, names = row
+    if not names:
+        return {"id": 22, "name": "rules name the station", "severity": "BLOCK", "status": "fail",
+                "detail": f"station {station_id} has no rules_names: fill them from the survey",
+                "examples": []}
     problems = []
     for m in ctx["markets"]:
         rules = m.get("rules_primary", "")
-        if needle not in rules:
+        codes = re.findall(r"\(CLI[A-Z]{3}\)", rules)
+        if codes:
+            station_named = all(code == "(" + cli_pil + ")" for code in codes)
+        else:
+            station_named = any(name in rules for name in names)
+        if not station_named:
             problems.append(f"{m.get('ticker', '?')}: {rules[:80]}")
     return make_check(22, "rules name the station", "BLOCK", problems)
 
@@ -509,10 +519,15 @@ def check_22(ctx, conn):
 def check_23(ctx):
     problems = []
     for m in ctx["markets"]:
-        rules = m.get("rules_primary", "")
-        if "The Weather Company" not in rules:
-            problems.append(f"{m.get('ticker', '?')}: {rules[:80]}")
-    return make_check(23, "rules name the settlement source", "BLOCK", problems)
+        ticker = m.get("ticker", "?")
+        source = settlement_source(m.get("rules_primary", ""))
+        day = event_date(m["event_ticker"])
+        expected = "The Weather Company" if day >= TWC_FROM else "National Weather Service"
+        if source is None:
+            problems.append(f"{ticker}: no single known source in rules")
+        elif source != expected:
+            problems.append(f"{ticker}: names {source}, event day {day} expects {expected}")
+    return make_check(23, "rules name the settlement source for the date", "BLOCK", problems)
 
 
 # ---------- the gate ----------
@@ -541,7 +556,7 @@ def run_checks(dump_dir, conn):
         (20, "late trades and empty expiration_value", "WARN", check_20),
         (21, "translation counts", "WARN", check_21),
         (22, "rules name the station", "BLOCK", lambda c: check_22(c, conn)),
-        (23, "rules name the settlement source", "BLOCK", check_23),
+        (23, "rules name the settlement source for the date", "BLOCK", check_23),
     ]
     ctx["bid_0_to_null"] = 0
     ctx["ask_1_to_null"] = 0

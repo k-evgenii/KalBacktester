@@ -217,6 +217,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", required=True, type=date.fromisoformat, help="first event day, YYYY-MM-DD")
     parser.add_argument("--end", required=True, type=date.fromisoformat, help="last event day, YYYY-MM-DD")
+    parser.add_argument("--out", type=Path, default=OUT_DIR, help="output folder (default api_probe/kalshi/KXHIGHNY)")
     args = parser.parse_args()
 
     days = []
@@ -227,7 +228,7 @@ def main():
     wanted_events = {event_ticker(day) for day in days}
 
     markets = fetch_markets(wanted_events)
-    write_json(OUT_DIR / "markets.json", {"start": args.start.isoformat(), "end": args.end.isoformat(), "markets": markets})
+    write_json(args.out / "markets.json", {"start": args.start.isoformat(), "end": args.end.isoformat(), "markets": markets})
     print(f"{len(markets)} markets in {len(wanted_events)} events")
 
     market_reports = {}
@@ -240,8 +241,8 @@ def main():
         ticker = market["ticker"]
         surface, bars = fetch_bars(market)
         trades = fetch_trades(ticker, surface)
-        write_json(OUT_DIR / "bars_1min" / f"{ticker}.json", {"ticker": ticker, "surface": surface, "candlesticks": bars})
-        write_json(OUT_DIR / "trades" / f"{ticker}.json", {"ticker": ticker, "surface": surface, "trades": trades})
+        write_json(args.out / "bars_1min" / f"{ticker}.json", {"ticker": ticker, "surface": surface, "candlesticks": bars})
+        write_json(args.out / "trades" / f"{ticker}.json", {"ticker": ticker, "surface": surface, "trades": trades})
 
         market_reports[ticker] = market_report(market, surface, bars, trades)
         all_bars.extend(bars)
@@ -265,7 +266,7 @@ def main():
             "trades": count_nulls(all_trades),
         },
     }
-    write_json(OUT_DIR / "_report.json", report)
+    write_json(args.out / "_report.json", report)
 
     flagged = {ticker: r["flags"] for ticker, r in market_reports.items() if r["flags"]}
     print(f"events: {len(wanted_events)}, markets: {len(markets)}, bars: {len(all_bars)}, trades: {len(all_trades)}")

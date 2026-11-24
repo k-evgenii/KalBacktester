@@ -514,3 +514,12 @@ COMMENT ON COLUMN forecast_hourly.cloud_cover_pct IS 'Forecast cloud cover in pe
 COMMENT ON COLUMN forecast_hourly.wind_speed_mph IS 'Forecast wind speed in miles per hour, as returned by the model; null if missing.';
 COMMENT ON COLUMN forecast_hourly.precip_in IS 'Forecast precipitation in inches, as returned by the model (can be slightly negative); null if missing.';
 COMMENT ON COLUMN forecast_hourly.shortwave_wm2 IS 'Forecast shortwave radiation in watts per square metre, as returned by the model (can be negative); null if missing.';
+
+-- ---------------------------------------------------------------------------
+-- Station names in Kalshi's rules text (unit 014)
+-- ---------------------------------------------------------------------------
+ALTER TABLE station ADD COLUMN rules_names text[] NOT NULL DEFAULT '{}';
+COMMENT ON COLUMN station.rules_names IS
+    'Phrases that identify this station in Kalshi rules text, e.g. (CLINYC), Central Park, New York. '
+    'A market''s rules_primary must contain at least one of them (case-sensitive). '
+    'Filled by hand from the rules-wording survey.';

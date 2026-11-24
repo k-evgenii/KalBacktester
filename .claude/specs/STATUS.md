@@ -25,6 +25,9 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | 008 | B | settled markets frozen in the database (`market_guard`) | track-b | done, commit bfcb256 (merged into dev) |
 | 009 | A ingestion | load the weather dump (`ingest/load_weather_dump.py`); forecast CHECKs relaxed by user decision | dev / lead chat | done, commit 8dd0c12 |
 | 010 | B | QA gate: rules text must name the station and The Weather Company | track-b | done, commit 51139a8 (merged into dev, b821fb9) |
+| 014 | A ingestion | station names as data + rules-wording survey | dev / lead chat | approved by reviewer, verified; not committed |
+| 015 | A ingestion | gate checks 22/23 read every historical wording; loader stores the source per event; June and Aug 2026 NY weeks loaded | dev / lead chat | approved by reviewer, verified; not committed |
+| 016 | A ingestion | numeric station check in the weather loader; weather for the June and Aug weeks | dev / lead chat | approved by reviewer, verified; not committed |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |

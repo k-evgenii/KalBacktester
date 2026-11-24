@@ -101,6 +101,7 @@ Unit 007 adds five changes at the end of `schema.sql`:
 - `station`: new table, one row per weather station.
 - `underlying.station_id`: new nullable column linking an underlying to its station.
 - `official_daily`, `observation_hourly`, `forecast_hourly`: new tables for the official daily values, the hourly station observations and the hourly model forecasts.
+- `station.rules_names` (unit 014): the phrases that identify the station in Kalshi's rules text, filled by hand from the rules-wording survey; a market's `rules_primary` must contain one of them.
 
 | Table | One row is | Key | Append-only |
 |---|---|---|---|
@@ -157,7 +158,7 @@ docker exec kalbt-recon-db sh -c 'dropdb -U "$POSTGRES_USER" kalbt_schema_test'
 ```
 
 This also proves that `db/schema.sql` builds cleanly from scratch. Expected: 63 PASS for
-`test_schema.sql`, 46 PASS for `test_weather_schema.sql`.
+`test_schema.sql`, 48 PASS for `test_weather_schema.sql`.
 
 `db/schema.sql` runs only when the data volume is first created (it is mounted as `/docker-entrypoint-initdb.d/01_schema.sql`). Editing it later does not change an existing database.
 

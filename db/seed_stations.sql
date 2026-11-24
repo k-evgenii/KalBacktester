@@ -10,3 +10,7 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 UPDATE underlying SET station_id = 'KNYC' WHERE underlying_id = 'NYC_HIGH' AND station_id IS NULL;
+
+UPDATE station
+SET rules_names = ARRAY['(CLINYC)', 'Central Park, New York', 'New York City']
+WHERE station_id = 'KNYC' AND rules_names = '{}';

@@ -46,10 +46,23 @@ def dec_or_none(value):
 
 
 def row_counts(cur):
+    """All rows of every table (used to see that a rerun changes nothing)."""
     counts = {}
     for table in TABLES:
         cur.execute(f"SELECT count(*) FROM {table}")
         counts[table] = cur.fetchone()[0]
+    return counts
+
+
+def dump_row_counts(cur):
+    """Rows of the November dump only: underlying and series in full, the rest by dump ticker."""
+    counts = row_counts(cur)
+    cur.execute("SELECT count(*) FROM event WHERE ticker = ANY(%s)", (event_tickers,))
+    counts["event"] = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM market WHERE ticker = ANY(%s)", (market_tickers,))
+    counts["market"] = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM candle WHERE market_ticker = ANY(%s)", (market_tickers,))
+    counts["candle"] = cur.fetchone()[0]
     return counts
 
 
@@ -59,13 +72,15 @@ for m in markets:
     path = DUMP / "bars_1min" / (m["ticker"] + ".json")
     bars[m["ticker"]] = json.loads(path.read_text())["candlesticks"]
 total_bars = sum(len(b) for b in bars.values())
-n_events = len({m["event_ticker"] for m in markets})
+event_tickers = sorted({m["event_ticker"] for m in markets})
+market_tickers = sorted(m["ticker"] for m in markets)
+n_events = len(event_tickers)
 
 conn = connect()
 cur = conn.cursor()
 
 # Test 1
-counts = row_counts(cur)
+counts = dump_row_counts(cur)
 report("1 row counts", counts == {"underlying": 1, "series": 1, "event": 7, "market": 42, "candle": 41158},
        str(counts))
 report("1 counts match dump (derived)",
@@ -73,7 +88,8 @@ report("1 counts match dump (derived)",
        f"{counts} vs events={n_events} markets={len(markets)} bars={total_bars}")
 
 # Test 2
-cur.execute("SELECT market_ticker, count(*), sum(volume) FROM candle GROUP BY market_ticker")
+cur.execute("SELECT market_ticker, count(*), sum(volume) FROM candle WHERE market_ticker = ANY(%s) GROUP BY market_ticker",
+            (market_tickers,))
 db_vol = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
 bad = []
 for ticker, bl in bars.items():
@@ -83,7 +99,8 @@ for ticker, bl in bars.items():
 report("2 per-market candle count and exact volume sum", not bad and set(db_vol) == set(bars), str(bad[:3]))
 
 # Test 3
-cur.execute("SELECT market_ticker, ts, yes_bid, yes_ask FROM candle")
+cur.execute("SELECT market_ticker, ts, yes_bid, yes_ask FROM candle WHERE market_ticker = ANY(%s)",
+            (market_tickers,))
 db_candles = {(r[0], r[1]): (r[2], r[3]) for r in cur.fetchall()}
 null_bid_bad, null_ask_bad, value_bad = [], [], []
 tot_nb = tot_na = 0
@@ -116,7 +133,8 @@ report("3d every candle quote equals the bar", not value_bad, str(value_bad[:3])
 
 # Test 4
 cur.execute("""SELECT count(*) FROM candle c JOIN market m ON m.ticker = c.market_ticker
-               WHERE c.ts < m.open_time OR c.ts > m.close_time""")
+               WHERE m.ticker = ANY(%s) AND (c.ts < m.open_time OR c.ts > m.close_time)""",
+            (market_tickers,))
 outside = cur.fetchone()[0]
 report("4 candle ts within open_time..close_time", outside == 0, f"{outside} outside")
 out_dump = 0
@@ -129,7 +147,7 @@ report("4 EXTRA dump bars within the window (expectation sanity)", out_dump == 0
 
 # Test 5
 cur.execute("""SELECT ticker, strike_type, floor_strike, cap_strike, open_time, close_time, result, settled_at
-               FROM market""")
+               FROM market WHERE ticker = ANY(%s)""", (market_tickers,))
 db_markets = {r[0]: r[1:] for r in cur.fetchall()}
 bad = []
 for m in markets:
@@ -143,7 +161,8 @@ report("5 market attributes equal markets.json", not bad and set(db_markets) == 
        str(bad[:2]))
 
 # EXTRA: event and static rows
-cur.execute("SELECT ticker, series_ticker, underlying_id, event_date, settlement_source FROM event")
+cur.execute("SELECT ticker, series_ticker, underlying_id, event_date, settlement_source FROM event WHERE ticker = ANY(%s)",
+            (event_tickers,))
 db_events = {r[0]: r[1:] for r in cur.fetchall()}
 exp_events = {}
 for m in markets:

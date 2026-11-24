@@ -1,9 +1,14 @@
-"""Checks the loaded KNYC weather dump against the raw dump files (spec 009, tests 1 to 6)."""
+"""Checks the loaded November KNYC weather dump against the raw dump files (spec 009, tests 1 to 6).
+
+Since spec 016 the database also holds June and August weeks, so every count and comparison is
+scoped to the November climate days (2026-11-16 to 2026-11-22). Hourly tables use a UTC window
+that covers November only.
+"""
 import csv
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,6 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 WEATHER = ROOT / "api_probe" / "weather" / "dump" / "KNYC"
 MARKETS = ROOT / "api_probe" / "kalshi" / "KXHIGHNY" / "markets.json"
 STATION = "KNYC"
+FIRST_DAY, LAST_DAY = date(2026, 11, 16), date(2026, 11, 22)
+NOV_START = datetime(2026, 11, 1, tzinfo=timezone.utc)
+NOV_END = datetime(2026, 12, 1, tzinfo=timezone.utc)
 FORECAST_COLUMNS = {
     "temperature_2m": "temp_f",
     "dew_point_2m": "dewpoint_f",
@@ -53,12 +61,14 @@ def load_json(path):
 
 def table_counts(cur):
     counts = {}
-    cur.execute("SELECT source, count(*) FROM official_daily WHERE station_id = %s GROUP BY source",
-                (STATION,))
+    cur.execute("""SELECT source, count(*) FROM official_daily
+                   WHERE station_id = %s AND climate_date BETWEEN %s AND %s GROUP BY source""",
+                (STATION, FIRST_DAY, LAST_DAY))
     for source, n in cur.fetchall():
         counts["official_daily " + source] = n
-    for table in ("observation_hourly", "forecast_hourly"):
-        cur.execute(f"SELECT count(*) FROM {table} WHERE station_id = %s", (STATION,))
+    for table, time_column in (("observation_hourly", "observed_at"), ("forecast_hourly", "valid_time")):
+        cur.execute(f"SELECT count(*) FROM {table} WHERE station_id = %s AND {time_column} >= %s AND {time_column} < %s",
+                    (STATION, NOV_START, NOV_END))
         counts[table] = cur.fetchone()[0]
     return counts
 
@@ -105,7 +115,8 @@ report("1d forecast_hourly rows equal non-null (model, time, lead) combinations"
 
 # ---------------------------------------------------------------- test 2
 cur.execute("""SELECT climate_date, high_f, high_time_lst, low_f, reference, issued_at
-               FROM official_daily WHERE station_id = %s AND source = 'nws_cli'""", (STATION,))
+               FROM official_daily WHERE station_id = %s AND source = 'nws_cli'
+               AND climate_date BETWEEN %s AND %s""", (STATION, FIRST_DAY, LAST_DAY))
 db_cli = {r[0]: r[1:] for r in cur.fetchall()}
 exp_cli = {}
 for row in cli_rows:
@@ -116,7 +127,8 @@ report("2 every nws_cli row equals its CLI row", db_cli == exp_cli, f"{db_cli} v
 
 # ---------------------------------------------------------------- test 3
 cur.execute("""SELECT observed_at, temp_f, dewpoint_f, rel_humidity_pct, wind_speed_kt, precip_in, metar
-               FROM observation_hourly WHERE station_id = %s""", (STATION,))
+               FROM observation_hourly WHERE station_id = %s
+               AND observed_at >= %s AND observed_at < %s""", (STATION, NOV_START, NOV_END))
 db_obs = {r[0]: r[1:] for r in cur.fetchall()}
 
 
@@ -140,7 +152,8 @@ report("3b M cells are NULL (and nothing else is)", m_cells == null_cells and m_
 # ---------------------------------------------------------------- test 4
 cur.execute("""SELECT model, valid_time, lead_day, temp_f, dewpoint_f, cloud_cover_pct,
                       wind_speed_mph, precip_in, shortwave_wm2
-               FROM forecast_hourly WHERE station_id = %s""", (STATION,))
+               FROM forecast_hourly WHERE station_id = %s
+               AND valid_time >= %s AND valid_time < %s""", (STATION, NOV_START, NOV_END))
 db_fc = {(r[0], r[1], r[2]): tuple(r[3:]) for r in cur.fetchall()}
 bad = [k for k in forecast_expected if db_fc.get(k) != forecast_expected[k]]
 report("4a every forecast row equals its file value", not bad and set(db_fc) == set(forecast_expected),
@@ -166,7 +179,8 @@ cur.execute("""
     JOIN station st ON st.station_id = u.station_id
     JOIN official_daily od ON od.station_id = st.station_id
                           AND od.climate_date = e.event_date AND od.source = 'kalshi'
-    ORDER BY e.ticker""")
+    WHERE e.event_date BETWEEN %s AND %s
+    ORDER BY e.ticker""", (FIRST_DAY, LAST_DAY))
 linked = cur.fetchall()
 inside = 0
 for ticker, high, station_id in linked:
@@ -192,7 +206,8 @@ report("5a join links 7 events and 7 of 7 highs fall in the yes market's range",
 cur.execute("""SELECT k.climate_date, k.high_f, n.high_f
                FROM official_daily k JOIN official_daily n
                  ON n.station_id = k.station_id AND n.climate_date = k.climate_date AND n.source = 'nws_cli'
-               WHERE k.source = 'kalshi' AND k.station_id = %s""", (STATION,))
+               WHERE k.source = 'kalshi' AND k.station_id = %s
+                 AND k.climate_date BETWEEN %s AND %s""", (STATION, FIRST_DAY, LAST_DAY))
 pairs = cur.fetchall()
 report("5b kalshi and nws_cli highs equal on all 7 days",
        len(pairs) == 7 and all(a == b for _, a, b in pairs), str(pairs))
@@ -208,7 +223,8 @@ for et, ms in events.items():
         values.pop() if len(values) == 1 else "DIFFERENT",
         min(datetime.fromisoformat(m["settlement_ts"].replace("Z", "+00:00")) for m in ms), et)
 cur.execute("""SELECT climate_date, high_f, issued_at, reference, high_time_lst, low_f
-               FROM official_daily WHERE station_id = %s AND source = 'kalshi'""", (STATION,))
+               FROM official_daily WHERE station_id = %s AND source = 'kalshi'
+               AND climate_date BETWEEN %s AND %s""", (STATION, FIRST_DAY, LAST_DAY))
 rows = cur.fetchall()
 db_kalshi = {r[0]: r[1:4] for r in rows}
 report("EXTRA kalshi rows equal markets.json (high, earliest settlement, event ticker, NULL time/low)",
@@ -226,14 +242,15 @@ print(proc.stdout.strip())
 print(proc.stderr.strip())
 print("---------------------------")
 report("6a rerun exits 0", proc.returncode == 0, f"exit {proc.returncode}")
-lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+lines = [ln for ln in proc.stdout.splitlines() if ln.strip() and not ln.startswith("station check:")]
+report("6d EXTRA rerun station check says ok", "-> ok" in proc.stdout, proc.stdout)
 nonzero = []
 for ln in lines:
     numbers = [tok for tok in ln.replace(":", " ").replace("=", " ").replace(",", "").split() if tok.isdigit()]
     if any(int(n) != 0 for n in numbers):
         nonzero.append(ln)
 report("6b rerun reports 0 rows inserted on every line",
-       len(lines) >= 4 and not nonzero, f"{len(lines)} lines, nonzero: {nonzero}")
+       len(lines) == 4 and not nonzero, f"{len(lines)} lines, nonzero: {nonzero}")
 conn = connect()
 cur = conn.cursor()
 after = table_counts(cur)

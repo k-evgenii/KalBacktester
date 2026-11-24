@@ -1,4 +1,4 @@
-"""Checks the ingestion QA gate on tampered copies of the KXHIGHNY dump (spec 004, tests 1 to 14).
+"""Checks the ingestion QA gate on tampered copies of the KXHIGHNY dump (specs 004, 010, 015).
 
 Every test copies the real dump into a temporary folder, makes one change, and runs run_checks
 against the live database. The real dump and the database are only read.
@@ -15,6 +15,8 @@ from ingest.qa_kxhighny_dump import run_checks
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DUMP = Path("/home/kondr/KalBacktester/api_probe/kalshi/KXHIGHNY")
+JUNE_DUMP = ROOT / "api_probe" / "kalshi" / "KXHIGHNY_2026-06-01_2026-06-07"
+AUGUST_DUMP = ROOT / "api_probe" / "kalshi" / "KXHIGHNY_2026-08-12_2026-08-18"
 TABLES = ["underlying", "series", "event", "market", "candle",
           "run", "order_intent", "order_outcome", "settlement", "position_snapshot"]
 
@@ -38,10 +40,10 @@ def row_counts():
     return counts
 
 
-def copy_dump(tmp):
-    """Copy the real dump (without report files) into tmp and return the copy's path."""
+def copy_dump(tmp, source=DUMP):
+    """Copy a real dump (default: November; without report files) into tmp and return the copy's path."""
     copy = Path(tmp) / "KXHIGHNY"
-    shutil.copytree(DUMP, copy, ignore=shutil.ignore_patterns("_report.json", "_qa_report.json"))
+    shutil.copytree(source, copy, ignore=shutil.ignore_patterns("_report.json", "_qa_report.json"))
     return copy
 
 
@@ -343,6 +345,54 @@ with tempfile.TemporaryDirectory() as tmp:
     save_json(copy / "markets.json", data)
     print(f"  {target['ticker']}: rules_primary The Weather Company -> the National Weather Service")
     expect_block("18 wrong settlement source is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Test 19 (spec 015 test 2): the gate passes each real dump, checks 22 and 23 pass
+for dump in (DUMP, JUNE_DUMP, AUGUST_DUMP):
+    rep = run_checks(dump, conn)
+    statuses = {i: checks_by_id(rep).get(i, {}).get("status") for i in (22, 23)}
+    report(f"19 real dump {dump.name} is PASS and checks 22 and 23 pass",
+           rep["verdict"] == "PASS" and all(s == "pass" for s in statuses.values()),
+           f"verdict {rep['verdict']}, statuses {statuses}, check 22 {checks_by_id(rep).get(22)}, check 23 {checks_by_id(rep).get(23)}")
+
+# Test 20 (spec 015 test 3a): station named by none of its rules_names
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("(CLINYC)", "(CLIXYZ)").replace("New York City", "Gotham")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: rules_primary (CLINYC) -> (CLIXYZ), New York City -> Gotham")
+    expect_block("20 station not named is BLOCK, check 22", run_checks(copy, conn), [22])
+
+# Test 21 (spec 015 test 3b): November market naming the wrong source for its date
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("The Weather Company", "National Weather Service")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: The Weather Company -> National Weather Service")
+    expect_block("21 wrong source for the date is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Test 22 (spec 015 test 3c): rules naming both sources
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"] + " National Weather Service"
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: ' National Weather Service' appended")
+    expect_block("22 both sources named is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Test 23 (spec 015 test 3d): June market naming The Weather Company
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp, JUNE_DUMP)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("National Weather Service", "The Weather Company")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: National Weather Service -> The Weather Company")
+    expect_block("23 June market naming The Weather Company is BLOCK, check 23", run_checks(copy, conn), [23])
 
 conn.rollback()
 conn.close()

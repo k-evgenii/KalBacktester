@@ -6,13 +6,14 @@ Safe to run twice: every insert is ON CONFLICT DO NOTHING.
 """
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
 from db.connect import connect
 
 DUMP_DIR = Path(__file__).resolve().parent.parent / "api_probe" / "kalshi" / "KXHIGHNY"
+TWC_FROM = date(2026, 8, 14)  # first event day Kalshi settles daily highs on The Weather Company
 
 
 def bar_quote(bar, side):  # side is "yes_bid" or "yes_ask"
@@ -39,6 +40,16 @@ def candle_row(market_ticker, bar):
 
 def event_date(event_ticker):
     return datetime.strptime(event_ticker.split("-")[1], "%y%b%d").date()
+
+
+def settlement_source(rules):
+    """The source a rules text names: 'The Weather Company' or 'National Weather Service'.
+    None when it names neither or both."""
+    twc = "The Weather Company" in rules
+    nws = "National Weather Service" in rules
+    if twc == nws:
+        return None
+    return "The Weather Company" if twc else "National Weather Service"
 
 
 def main(dump_dir=DUMP_DIR):
@@ -71,10 +82,14 @@ def main(dump_dir=DUMP_DIR):
 
         inserted["event"] = 0
         for ticker in event_tickers:
+            first_market = min((m for m in markets if m["event_ticker"] == ticker), key=lambda m: m["ticker"])
+            source = settlement_source(first_market.get("rules_primary", ""))
+            if source is None:
+                sys.exit(f"{first_market['ticker']}: rules name no single known settlement source")
             cur.execute(
                 "INSERT INTO event (ticker, series_ticker, underlying_id, event_date, "
                 "settlement_source) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (ticker, "KXHIGHNY", "NYC_HIGH", event_date(ticker), "The Weather Company"),
+                (ticker, "KXHIGHNY", "NYC_HIGH", event_date(ticker), source),
             )
             inserted["event"] += cur.rowcount
 
