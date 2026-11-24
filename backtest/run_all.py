@@ -1,7 +1,7 @@
-"""Run the forecast_favourite strategy over every loaded city series, reconcile each run, summarise.
+"""Run a strategy over every loaded city series, reconcile each run, summarise.
 
 Run from the repo root:
-    uv run python -m backtest.run_all --db NAME [--dry] [--save] [--series TICKER ...]
+    uv run python -m backtest.run_all --db NAME [--strategy NAME] [--dry] [--save] [--series TICKER ...]
 Each run is reconciled, then rolled back unless --save is given. --dry writes nothing.
 Rules are in .claude/specs/B017-backtest-harness.md and B019-runs-throwaway-by-default.md.
 """
@@ -15,7 +15,9 @@ from pathlib import Path
 from db.connect import connect
 from engine.match_intents import match_intents
 from recon.check_run import check_run
-from strategies.forecast_favourite import DEFAULTS, intents_for_series
+from strategies import forecast_favourite, midday_fade
+
+STRATEGIES = {"forecast_favourite": forecast_favourite, "midday_fade": midday_fade}
 
 REPORT_DIR = Path(__file__).resolve().parent / "reports"
 
@@ -48,14 +50,15 @@ def loaded_series(conn):
     ]
 
 
-def run_series(conn, series, params, dry, save):
+def run_series(conn, series, params, dry, save, strategy="forecast_favourite"):
     series_ticker = series["series_ticker"]
-    intents, infos = intents_for_series(
+    intents, infos = STRATEGIES[strategy].intents_for_series(
         conn, series_ticker, series["date_start"], series["date_end"], params
     )
     skipped_days = dict(Counter(info["skipped"] for info in infos if info["skipped"]))
 
     result = {
+        "strategy": strategy,
         "series_ticker": series_ticker,
         "date_start": series["date_start"].isoformat(),
         "date_end": series["date_end"].isoformat(),
@@ -80,7 +83,7 @@ def run_series(conn, series, params, dry, save):
         return result
 
     try:
-        run_id = match_intents(conn, "forecast_favourite", params, intents)
+        run_id = match_intents(conn, strategy, params, intents)
         report = check_run(conn, run_id)  # same connection: sees the uncommitted rows
     except Exception:
         conn.rollback()
@@ -122,6 +125,7 @@ def print_result(r):
 def main():
     parser = argparse.ArgumentParser(description="Run the reference strategy over every loaded series.")
     parser.add_argument("--db", required=True, help="database name (no default)")
+    parser.add_argument("--strategy", choices=sorted(STRATEGIES), default="forecast_favourite")
     parser.add_argument("--dry", action="store_true", help="list what would run, write nothing")
     parser.add_argument("--save", action="store_true", help="keep the runs (default: roll back)")
     parser.add_argument("--series", nargs="+", help="only these series tickers")
@@ -136,7 +140,8 @@ def main():
             all_series = [s for s in all_series if s["series_ticker"] in args.series]
         results = []
         for series in all_series:
-            result = run_series(conn, series, dict(DEFAULTS), args.dry, args.save)
+            result = run_series(conn, series, dict(STRATEGIES[args.strategy].DEFAULTS), args.dry, args.save,
+                                args.strategy)
             print_result(result)
             results.append(result)
     finally:
