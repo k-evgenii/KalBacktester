@@ -55,3 +55,7 @@ legacy/data
 # raw API dumps
 api_probe/kalshi/KXHIGHNY*/
 api_probe/weather/dump*/
+
+# overnight progress files and database backups (local only)
+.claude/overnight/reports/
+backups/

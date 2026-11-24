@@ -1,5 +1,8 @@
 # Status board
 
+Numbering from 2026-11-24: units are A## (Track A, next A018), B## (Track B, next B014), C## (Track C, C01 done).
+Overnight plan: `.claude/overnight/PLAYBOOK.md`.
+
 Edited by the lead chat only. States: `spec` (being written) → `approved` → `building` →
 `review` → `ready` (to merge) → `done` (merged, tagged).
 
@@ -29,6 +32,10 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | 015 | A ingestion | gate checks 22/23 read every historical wording; loader stores the source per event; June and Aug 2026 NY weeks loaded | dev / lead chat | done, commit 67c899f |
 | 016 | A ingestion | numeric station check in the weather loader; weather for the June and Aug weeks | dev / lead chat | done, commit 67c899f |
 | 017 | A ingestion | gate check 14 compares market times in local time | dev / lead chat | done (see git log) |
+| B011 | B | bracket and event-outcome views | track-b | done, 9c0cb05 (merged into dev) |
+| B012 | B | matching engine (`engine/match_intents.py`) | track-b | done, bb11d9f (merged into dev) |
+| B013 | B | run reconciliation (`recon/check_run.py`) | track-b | done, a3eb737 (merged into dev) |
+| C01 | C | portfolio ledger core (`db/portfolio.sql`) | track-c | done, 1d4dec4 (not yet in dev) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
