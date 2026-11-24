@@ -10,6 +10,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from db.connect import connect
 from ingest.load_kxhighny_dump import DUMP_DIR, TWC_FROM, candle_row, event_date, settlement_source
@@ -362,17 +363,29 @@ def check_13(ctx):
     return make_check(13, "one winner per event", "BLOCK", problems)
 
 
-def check_14(ctx):
+def check_14(ctx, conn):
+    station = station_of(conn)
+    if station is None:
+        return {"id": 14, "name": "event size and times", "severity": "WARN", "status": "fail",
+                "detail": "station for KXHIGHNY unknown: cannot check times", "examples": []}
+    tz = ZoneInfo(station[3])
     problems = []
     for event, ms in events_of(ctx["markets"]).items():
         if len(ms) != 6:
             problems.append(f"{event}: {len(ms)} markets, expected 6")
-        midnight = datetime.combine(event_date(event), datetime.min.time(), tzinfo=timezone.utc)
+        day = event_date(event)
+        day_before = day - timedelta(days=1)
+        day_after = day + timedelta(days=1)
+        expected_open = datetime(day_before.year, day_before.month, day_before.day, 10, 0, tzinfo=tz)
+        allowed_closes = {
+            datetime(day_after.year, day_after.month, day_after.day, 0, 59, tzinfo=tz),
+            datetime(day_after.year, day_after.month, day_after.day, 1, 0, tzinfo=tz),
+        }
         for m in ms:
-            if parse_time(m["open_time"]) != midnight - timedelta(hours=9):
-                problems.append(f"{m['ticker']}: open_time {m['open_time']} is not event day - 9 h")
-            if parse_time(m["close_time"]) != midnight + timedelta(hours=30):
-                problems.append(f"{m['ticker']}: close_time {m['close_time']} is not event day + 30 h")
+            if parse_time(m["open_time"]) != expected_open:
+                problems.append(f"{m['ticker']}: open_time {m['open_time']} is not 10:00 local the day before")
+            if parse_time(m["close_time"]) not in allowed_closes:
+                problems.append(f"{m['ticker']}: close_time {m['close_time']} is not 00:59/01:00 local the day after")
     return make_check(14, "event size and times", "WARN", problems)
 
 
@@ -486,19 +499,24 @@ def check_21(ctx):
 
 # ---------- checks 22-23: the rules text names the right station and source ----------
 
-def check_22(ctx, conn):
+def station_of(conn):
+    """(station_id, cli_pil, rules_names, tz_name) of KXHIGHNY's station, or None."""
     with conn.cursor() as cur:
-        cur.execute("""SELECT s.station_id, s.cli_pil, s.rules_names
+        cur.execute("""SELECT s.station_id, s.cli_pil, s.rules_names, s.tz_name
                        FROM series se
                        JOIN underlying u ON u.underlying_id = se.underlying_id
                        JOIN station s    ON s.station_id = u.station_id
                        WHERE se.ticker = 'KXHIGHNY'""")
-        row = cur.fetchone()
+        return cur.fetchone()
+
+
+def check_22(ctx, conn):
+    row = station_of(conn)
     if row is None:
         return {"id": 22, "name": "rules name the station", "severity": "BLOCK", "status": "fail",
                 "detail": "station for KXHIGHNY unknown: seed the station and link the underlying before loading",
                 "examples": []}
-    station_id, cli_pil, names = row
+    station_id, cli_pil, names, _ = row
     if not names:
         return {"id": 22, "name": "rules name the station", "severity": "BLOCK", "status": "fail",
                 "detail": f"station {station_id} has no rules_names: fill them from the survey",
@@ -548,7 +566,7 @@ def run_checks(dump_dir, conn):
         (11, "bar times and crossed quotes", "BLOCK", check_11),
         (12, "strikes tile", "BLOCK", check_12),
         (13, "one winner per event", "BLOCK", check_13),
-        (14, "event size and times", "WARN", check_14),
+        (14, "event size and times", "WARN", lambda c: check_14(c, conn)),
         (15, "quote sums across an event", "WARN", check_15),
         (16, "same key, different value (database)", "BLOCK", lambda c: check_16(c, conn)),
         (18, "coverage", "WARN", check_18),
