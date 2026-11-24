@@ -3,6 +3,11 @@
 -- Positions are signed in YES units: positive = long YES, negative = long NO.
 -- Everything here is a function or a view over the journals; no tables.
 
+DROP VIEW IF EXISTS portfolio_daily_underlying;
+DROP VIEW IF EXISTS portfolio_daily;
+DROP VIEW IF EXISTS portfolio_position_daily;
+DROP VIEW IF EXISTS portfolio_market_daily;
+DROP VIEW IF EXISTS portfolio_calendar;
 DROP VIEW IF EXISTS fee_check;
 DROP VIEW IF EXISTS portfolio_ledger;
 DROP AGGREGATE IF EXISTS pos_agg(numeric, numeric);
@@ -132,3 +137,145 @@ COMMENT ON COLUMN fee_check.quantity IS 'Filled quantity.';
 COMMENT ON COLUMN fee_check.price IS 'Fill price in dollars, in the terms of the order side.';
 COMMENT ON COLUMN fee_check.fee IS 'Fee stored on the outcome, in dollars.';
 COMMENT ON COLUMN fee_check.expected_fee IS 'kalshi_fee for the fill with the run''s params fee_rate; null when the run has no fee_rate (cannot be checked).';
+
+-- ---------------------------------------------------------------------------
+-- Portfolio day by day (spec C02)
+-- ---------------------------------------------------------------------------
+
+-- One row per run and UTC day, from the first to the last day the run covers or has events on.
+CREATE VIEW portfolio_calendar AS
+SELECT r.run_id, d::date AS day
+FROM run r
+LEFT JOIN (
+    SELECT run_id, min(ts)::date AS first_day, max(ts)::date AS last_day
+    FROM portfolio_ledger GROUP BY run_id
+) l ON l.run_id = r.run_id
+CROSS JOIN LATERAL generate_series(
+    least(r.date_start, l.first_day)::timestamp,
+    greatest(r.date_end, l.last_day)::timestamp,
+    interval '1 day'
+) AS d;
+
+-- State of each market the run has traded, at the end of each day.
+CREATE VIEW portfolio_market_daily AS
+WITH running AS (
+    SELECT l.*,
+           sum(l.cash_flow) OVER w AS cash_cum,
+           sum(l.fee)       OVER w AS fees_cum
+    FROM portfolio_ledger l
+    WINDOW w AS (PARTITION BY l.run_id, l.market_ticker ORDER BY l.ts, l.kind, l.seq)
+)
+SELECT DISTINCT ON (c.run_id, c.day, r.market_ticker)
+       c.run_id, c.day, r.market_ticker,
+       r.net_after        AS net_units,
+       r.cost_basis_after AS cost_basis,
+       r.realized_cum, r.fees_cum, r.cash_cum
+FROM portfolio_calendar c
+JOIN running r ON r.run_id = c.run_id AND r.ts::date <= c.day
+ORDER BY c.run_id, c.day, r.market_ticker, r.ts DESC, r.kind DESC, r.seq DESC;
+
+CREATE VIEW portfolio_position_daily AS
+SELECT run_id, day, market_ticker, net_units, cost_basis,
+       round(cost_basis / abs(net_units), 4) AS avg_cost
+FROM portfolio_market_daily
+WHERE net_units <> 0;
+
+CREATE VIEW portfolio_daily AS
+WITH flow AS (
+    SELECT run_id, ts::date AS day,
+           -sum(cash_flow + fee) FILTER (WHERE kind = 'fill' AND cash_flow + fee < 0) AS premium_paid,
+            sum(cash_flow + fee) FILTER (WHERE kind = 'fill' AND cash_flow + fee > 0) AS premium_received,
+            sum(fee)                                                                  AS fees,
+            sum(cash_flow) FILTER (WHERE kind = 'settlement')                         AS payouts
+    FROM portfolio_ledger GROUP BY run_id, ts::date
+),
+state AS (
+    SELECT run_id, day,
+           sum(cash_cum) AS cash_cum, sum(cost_basis) AS cost_basis_open,
+           sum(realized_cum) AS realized_pnl_cum, sum(fees_cum) AS fees_cum,
+           count(*) FILTER (WHERE net_units <> 0) AS open_markets
+    FROM portfolio_market_daily GROUP BY run_id, day
+)
+SELECT c.run_id, c.day, r.starting_cash,
+       coalesce(f.premium_paid, 0)     AS premium_paid,
+       coalesce(f.premium_received, 0) AS premium_received,
+       coalesce(f.fees, 0)             AS fees,
+       coalesce(f.payouts, 0)          AS payouts,
+       r.starting_cash + coalesce(s.cash_cum, 0) AS cash_end,
+       coalesce(s.cost_basis_open, 0)  AS cost_basis_open,
+       coalesce(s.realized_pnl_cum, 0) AS realized_pnl_cum,
+       coalesce(s.fees_cum, 0)         AS fees_cum,
+       coalesce(s.realized_pnl_cum, 0) - coalesce(s.fees_cum, 0) AS net_pnl_cum,
+       coalesce(s.open_markets, 0)     AS open_markets
+FROM portfolio_calendar c
+JOIN run r ON r.run_id = c.run_id
+LEFT JOIN flow  f ON f.run_id = c.run_id AND f.day = c.day
+LEFT JOIN state s ON s.run_id = c.run_id AND s.day = c.day;
+
+CREATE VIEW portfolio_daily_underlying AS
+SELECT c.run_id, c.day, u.underlying_id,
+       coalesce(sum(m.cost_basis), 0)   AS cost_basis_open,
+       coalesce(sum(m.realized_cum), 0) AS realized_pnl_cum,
+       coalesce(sum(m.fees_cum), 0)     AS fees_cum,
+       coalesce(sum(m.realized_cum), 0) - coalesce(sum(m.fees_cum), 0) AS net_pnl_cum,
+       count(*) FILTER (WHERE m.net_units <> 0) AS open_markets
+FROM portfolio_calendar c
+CROSS JOIN underlying u
+LEFT JOIN (
+    SELECT d.*, e.underlying_id
+    FROM portfolio_market_daily d
+    JOIN market k ON k.ticker = d.market_ticker
+    JOIN event e  ON e.ticker = k.event_ticker
+) m ON m.run_id = c.run_id AND m.day = c.day AND m.underlying_id = u.underlying_id
+GROUP BY c.run_id, c.day, u.underlying_id;
+
+-- ---------------------------------------------------------------------------
+-- Comments (C02)
+-- ---------------------------------------------------------------------------
+
+COMMENT ON VIEW portfolio_calendar IS 'One row per run and UTC day, from the earlier of the run''s date_start and its first event day to the later of its date_end and its last event day.';
+COMMENT ON COLUMN portfolio_calendar.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_calendar.day IS 'The UTC day.';
+
+COMMENT ON VIEW portfolio_market_daily IS 'State at the end of each UTC day of every market the run has traded on or before that day, flat or not.';
+COMMENT ON COLUMN portfolio_market_daily.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_market_daily.day IS 'The UTC day; the state is after every event with ts::date <= day.';
+COMMENT ON COLUMN portfolio_market_daily.market_ticker IS 'The market.';
+COMMENT ON COLUMN portfolio_market_daily.net_units IS 'Position at the end of the day, signed YES units.';
+COMMENT ON COLUMN portfolio_market_daily.cost_basis IS 'Dollars paid for the position still open at the end of the day; 0 when flat.';
+COMMENT ON COLUMN portfolio_market_daily.realized_cum IS 'Realized P&L in this market up to the end of the day, before fees.';
+COMMENT ON COLUMN portfolio_market_daily.fees_cum IS 'Fees in dollars paid in this market up to the end of the day.';
+COMMENT ON COLUMN portfolio_market_daily.cash_cum IS 'Sum of cash_flow in this market up to the end of the day, in dollars.';
+
+COMMENT ON VIEW portfolio_position_daily IS 'One row per run, day and market with a non-zero position at the end of the day.';
+COMMENT ON COLUMN portfolio_position_daily.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_position_daily.day IS 'The UTC day.';
+COMMENT ON COLUMN portfolio_position_daily.market_ticker IS 'The market.';
+COMMENT ON COLUMN portfolio_position_daily.net_units IS 'Position at the end of the day, signed YES units; never 0.';
+COMMENT ON COLUMN portfolio_position_daily.cost_basis IS 'Dollars paid for the open position.';
+COMMENT ON COLUMN portfolio_position_daily.avg_cost IS 'cost_basis / abs(net_units), rounded to 4 decimals; for display only.';
+
+COMMENT ON VIEW portfolio_daily IS 'One row per run and UTC day: the day''s cash movements and the book at the end of the day. Cash end plus cost basis open equals starting cash plus net P&L, exactly.';
+COMMENT ON COLUMN portfolio_daily.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_daily.day IS 'The UTC day.';
+COMMENT ON COLUMN portfolio_daily.starting_cash IS 'run.starting_cash in dollars.';
+COMMENT ON COLUMN portfolio_daily.premium_paid IS 'That day only: cash paid by fills that cost cash, before fees, in dollars.';
+COMMENT ON COLUMN portfolio_daily.premium_received IS 'That day only: cash returned by fills that returned cash, before fees, in dollars.';
+COMMENT ON COLUMN portfolio_daily.fees IS 'That day only: fees in dollars.';
+COMMENT ON COLUMN portfolio_daily.payouts IS 'That day only: settlement payouts in dollars.';
+COMMENT ON COLUMN portfolio_daily.cash_end IS 'starting_cash plus all cash_flow up to the end of the day, in dollars.';
+COMMENT ON COLUMN portfolio_daily.cost_basis_open IS 'Dollars paid for positions still open at the end of the day.';
+COMMENT ON COLUMN portfolio_daily.realized_pnl_cum IS 'Realized P&L up to the end of the day, before fees.';
+COMMENT ON COLUMN portfolio_daily.fees_cum IS 'All fees up to the end of the day, in dollars.';
+COMMENT ON COLUMN portfolio_daily.net_pnl_cum IS 'realized_pnl_cum minus fees_cum.';
+COMMENT ON COLUMN portfolio_daily.open_markets IS 'Number of markets with a non-zero position at the end of the day.';
+
+COMMENT ON VIEW portfolio_daily_underlying IS 'One row per run, day and underlying (every row of underlying, traded or not): the end-of-day book of that underlying; 0 where the run never traded it.';
+COMMENT ON COLUMN portfolio_daily_underlying.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_daily_underlying.day IS 'The UTC day.';
+COMMENT ON COLUMN portfolio_daily_underlying.underlying_id IS 'The underlying.';
+COMMENT ON COLUMN portfolio_daily_underlying.cost_basis_open IS 'Dollars paid for positions still open in this underlying at the end of the day.';
+COMMENT ON COLUMN portfolio_daily_underlying.realized_pnl_cum IS 'Realized P&L in this underlying up to the end of the day, before fees.';
+COMMENT ON COLUMN portfolio_daily_underlying.fees_cum IS 'Fees in dollars in this underlying up to the end of the day.';
+COMMENT ON COLUMN portfolio_daily_underlying.net_pnl_cum IS 'realized_pnl_cum minus fees_cum.';
+COMMENT ON COLUMN portfolio_daily_underlying.open_markets IS 'Number of markets of this underlying with a non-zero position at the end of the day.';
