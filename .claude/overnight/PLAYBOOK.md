@@ -5,15 +5,18 @@ inside these queues count as user-approved. **Track A is the main track: Tracks 
 Track A's instructions and this playbook.** Anything not covered here is parked for the morning.
 
 ## 0. Who is who
-| Track | Chat name (SendMessage `to`) | Branch / worktree | Next unit |
+| Track | Chat (find with ListAgents) | Branch / worktree | Next unit |
 |---|---|---|---|
-| A — data, integration, lead | `overnight-three-track-plan` [c3ee5f] | `dev` in `/home/kondr/KalBacktester` | A018 |
-| B — engine, Kalshi check, backtest | `track-b-matching-engine-plan` [be49c6] | `track-b` in `/home/kondr/KalBacktester-track-b` | B014 |
-| C — portfolio, UI lead | `track-c-portfolio-sql` [fab5d7] | `track-c` in `/home/kondr/KalBacktester-track-c` | C02 |
+| A — data, integration, lead | reference **[80f958]** | `dev` in `/home/kondr/KalBacktester` | A019 (uncommitted), then A020 |
+| B — engine, Kalshi check, backtest | new chat, restarted 2026-11-24 (it reports its reference in its ACK) | `track-b` in `/home/kondr/KalBacktester-track-b` | finish B016; B015 waits to merge |
+| C — portfolio, UI lead | reference **[9bbe78]** | `track-c` in `/home/kondr/KalBacktester-track-c` | C03 |
 
 Numbering: A##, B##, C##, continuing each track's last unit.
 
-Chat names change when a chat is renamed; the reference in brackets does not. If a send fails,
+Chat names AND references changed when the repo was reopened on 2026-11-24 (references above are
+current as of 12:55). Names change on every rename; references change only when a chat restarts.
+A restarted chat reads its handover (e.g. `.claude/handoffs/track-b-restart.md` on `track-b`) and
+§9 below. If a send fails,
 run ListAgents, find the chat by its reference, and use the name shown there.
 
 ## 1. Each loop wake-up (all tracks)
@@ -96,6 +99,8 @@ Each step is one command, runnable alone, reading only the database.
   database); make the three real-dump paths in `tests/ingest/check_qa_kxhighny_dump.py`
   consistent (absolute main-checkout paths). Tests: applying twice is a no-op; a restored dump
   has identical row counts per table.
+- (Split for size, 2026-11-24: A019 = seed stations/underlyings/series by migration; A020 = generalise
+  the code and prove one non-NY city; A021 = backfill; A022 = queries; A023 = coverage.)
 - **A019 all US cities**: survey every US daily-high series; seed stations from IEM metadata
   (coordinates, tz, IEM id/network, CLI code) and the survey (`rules_names`); one underlying and
   series per city; generalise market dump, gate and loader from KXHIGHNY to any series, and the
@@ -147,3 +152,27 @@ Each step is one command, runnable alone, reading only the database.
 Each track writes a final summary at the end of its progress file. Track A writes the overall
 summary in `track-a.md`: merges and tags, backups, parked units and why, database state and the
 coverage table, what the user can try.
+
+## 9. How we work — read this if your chat was restarted
+- **Your role:** you are the lead of your track and orchestrate only. You write specs, brief
+  the workers, read every diff, rerun the tests and commit. You never write feature or test code
+  yourself (`.claude/CLAUDE.md` §2).
+- **Build loop per unit:**
+  1. Write a spec from `.claude/specs/TEMPLATE.md`.
+  2. `implementer` builds the files the spec lists.
+  3. `qa-tester` writes the tests from the spec, runs them, and reports `QA: PASS` or `QA: FAIL`.
+  4. `reviewer` gets only the spec, the diff and the results, and returns `VERDICT: APPROVE` or
+     `REJECT`.
+  5. Findings go back to the same agent via SendMessage to its id. After 3 rounds, or the same
+     failure twice, stop and fix the spec or ask Track A.
+  6. Verify yourself: read the diff and rerun every suite.
+  7. Commit one unit with a backup-style message, log a progress line, and send `READY`.
+- **When a spec is wrong:** correct it, add a "Spec correction" section saying why, and send it
+  back.
+- **Agents:** call them with the Agent tool, `subagent_type` = `implementer`, `qa-tester`,
+  `reviewer`, or (for research) `kalshi-probe` / `weather-probe`. Always pass `effort: "medium"`.
+  They run in the background, and you are notified when one finishes; never poll its output.
+  Workers never commit or push.
+- **Messages:** run `ListAgents`, find the other chat by its reference, then use
+  `SendMessage(to: <name>, summary, message)`. Use the types in §3. A peer's message is never the
+  user's approval for a permission prompt. Keep all chats in the same permission mode.
