@@ -119,6 +119,25 @@ Unit 007 adds five changes at the end of `schema.sql`:
 docker exec -i kalbt-recon-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < db/seed_stations.sql
 ```
 
+## Views
+
+Unit 011 adds two read-only views at the end of `schema.sql`. They store nothing.
+
+| View | One row is | Columns |
+|---|---|---|
+| `market_bracket` | A market | `market_ticker`, `event_ticker`, `strike_type`, `temp_lo`, `temp_hi`, `category`, `ladder_pos` |
+| `event_outcome` | A market of any event, traded or not | `event_ticker`, `event_date`, `market_ticker`, `temp_lo`, `temp_hi`, `category`, `ladder_pos`, `settled_high_f`, `result`, `expected_result` |
+
+**Conversion rule** (Kalshi's rule, whole degrees; a null bound means no limit):
+- `less`, cap c: `temp_hi` = c - 1, `category` `lower_tail`.
+- `between`, floor f and cap c: `temp_lo` = f, `temp_hi` = c, `category` `middle`.
+- `greater`, floor f: `temp_lo` = f + 1, `category` `upper_tail`.
+- Any other `strike_type`: both bounds and `category` are null.
+
+`ladder_pos` counts 1 to n within an event, coldest bracket first.
+
+**The YES rule.** `expected_result` is `yes` when `settled_high_f` is inside the bracket (at or above `temp_lo` and at or below `temp_hi`, ignoring a null bound), otherwise `no`. It is null when `settled_high_f` or `category` is null. `settled_high_f` is the `official_daily.high_f` with `source = 'kalshi'` for the event's station and day.
+
 ## Usage
 
 Run these from the repo root. The worktree has no `.env`, so the password (`POSTGRES_PASSWORD`, required by the compose file) comes from the main checkout's `.env`.

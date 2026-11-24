@@ -514,3 +514,81 @@ COMMENT ON COLUMN forecast_hourly.cloud_cover_pct IS 'Forecast cloud cover in pe
 COMMENT ON COLUMN forecast_hourly.wind_speed_mph IS 'Forecast wind speed in miles per hour, as returned by the model; null if missing.';
 COMMENT ON COLUMN forecast_hourly.precip_in IS 'Forecast precipitation in inches, as returned by the model (can be slightly negative); null if missing.';
 COMMENT ON COLUMN forecast_hourly.shortwave_wm2 IS 'Forecast shortwave radiation in watts per square metre, as returned by the model (can be negative); null if missing.';
+
+-- Views (unit 011)
+CREATE VIEW market_bracket AS
+SELECT
+    m.ticker       AS market_ticker,
+    m.event_ticker,
+    m.strike_type,
+    CASE m.strike_type
+        WHEN 'between' THEN m.floor_strike::integer
+        WHEN 'greater' THEN m.floor_strike::integer + 1
+    END AS temp_lo,
+    CASE m.strike_type
+        WHEN 'between' THEN m.cap_strike::integer
+        WHEN 'less'    THEN m.cap_strike::integer - 1
+    END AS temp_hi,
+    CASE m.strike_type
+        WHEN 'less'    THEN 'lower_tail'
+        WHEN 'between' THEN 'middle'
+        WHEN 'greater' THEN 'upper_tail'
+    END AS category,
+    row_number() OVER (
+        PARTITION BY m.event_ticker
+        ORDER BY CASE m.strike_type
+                     WHEN 'between' THEN m.floor_strike
+                     WHEN 'greater' THEN m.floor_strike + 1
+                 END NULLS FIRST,
+                 m.ticker
+    )::integer AS ladder_pos
+FROM market m;
+
+CREATE VIEW event_outcome AS
+SELECT
+    e.ticker      AS event_ticker,
+    e.event_date,
+    b.market_ticker,
+    b.temp_lo,
+    b.temp_hi,
+    b.category,
+    b.ladder_pos,
+    o.high_f      AS settled_high_f,
+    m.result,
+    CASE
+        WHEN o.high_f IS NULL OR b.category IS NULL THEN NULL
+        WHEN (b.temp_lo IS NULL OR o.high_f >= b.temp_lo)
+         AND (b.temp_hi IS NULL OR o.high_f <= b.temp_hi) THEN 'yes'
+        ELSE 'no'
+    END AS expected_result
+FROM market_bracket b
+JOIN market m     ON m.ticker = b.market_ticker
+JOIN event e      ON e.ticker = b.event_ticker
+JOIN underlying u ON u.underlying_id = e.underlying_id
+LEFT JOIN official_daily o
+       ON o.station_id   = u.station_id
+      AND o.climate_date = e.event_date
+      AND o.source       = 'kalshi';
+
+-- market_bracket
+COMMENT ON VIEW market_bracket IS 'One row per market: its whole-degree temperature range, category and position in the event ladder.';
+COMMENT ON COLUMN market_bracket.market_ticker IS 'The market.';
+COMMENT ON COLUMN market_bracket.event_ticker IS 'The event the market belongs to.';
+COMMENT ON COLUMN market_bracket.strike_type IS 'Kalshi strike type as stored: less, between or greater; anything else gives null bounds and category.';
+COMMENT ON COLUMN market_bracket.temp_lo IS 'Lowest whole degree Fahrenheit that makes the market YES; null means no lower bound.';
+COMMENT ON COLUMN market_bracket.temp_hi IS 'Highest whole degree Fahrenheit that makes the market YES; null means no upper bound.';
+COMMENT ON COLUMN market_bracket.category IS 'lower_tail (less), middle (between) or upper_tail (greater); null for other strike types.';
+COMMENT ON COLUMN market_bracket.ladder_pos IS 'Position 1 to n within the event, coldest bracket first.';
+
+-- event_outcome
+COMMENT ON VIEW event_outcome IS 'One row per market of every event, traded or not: settled temperature, Kalshi result and the result the bracket rule expects.';
+COMMENT ON COLUMN event_outcome.event_ticker IS 'The event.';
+COMMENT ON COLUMN event_outcome.event_date IS 'The calendar day the event settles on.';
+COMMENT ON COLUMN event_outcome.market_ticker IS 'The market.';
+COMMENT ON COLUMN event_outcome.temp_lo IS 'From market_bracket: lowest whole degree that makes the market YES; null means no lower bound.';
+COMMENT ON COLUMN event_outcome.temp_hi IS 'From market_bracket: highest whole degree that makes the market YES; null means no upper bound.';
+COMMENT ON COLUMN event_outcome.category IS 'From market_bracket: lower_tail, middle or upper_tail.';
+COMMENT ON COLUMN event_outcome.ladder_pos IS 'From market_bracket: position within the event, coldest first.';
+COMMENT ON COLUMN event_outcome.settled_high_f IS 'Settled daily high in degrees Fahrenheit: official_daily value with source kalshi for the event station and day; null until known.';
+COMMENT ON COLUMN event_outcome.result IS 'Kalshi result of the market, yes or no; null until settled.';
+COMMENT ON COLUMN event_outcome.expected_result IS 'yes if settled_high_f is inside the bracket, else no; null if settled_high_f or category is null.';
