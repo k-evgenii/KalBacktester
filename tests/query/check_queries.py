@@ -5,6 +5,7 @@ Read-only on live kalbt, fixed events only (a backfill may be running, so no who
 """
 import datetime as dt
 import sys
+from pathlib import Path
 import traceback
 from decimal import Decimal
 
@@ -17,6 +18,8 @@ from query import market, weather
 NY = "KXHIGHNY-26NOV22"
 CHI = "KXHIGHCHI-26NOV22"
 UTC = dt.timezone.utc
+SCHEMA = Path(__file__).resolve().parent.parent.parent / "db" / "schema.sql"
+TEST_DB = "kalbt_a022_test"
 TRADING = ["run", "order_intent", "order_outcome", "settlement", "position_snapshot"]
 STEP = dt.timedelta(minutes=15)
 
@@ -31,6 +34,13 @@ def report(name, ok, detail=""):
 
 def utc(y, mo, d, h=0):
     return dt.datetime(y, mo, d, h, tzinfo=UTC)
+
+
+def ceil_to_grid(ts, step_s):
+    """Smallest grid point (multiples of step_s since the epoch) at or after ts."""
+    micro = (ts - dt.datetime(1970, 1, 1, tzinfo=UTC)) // dt.timedelta(microseconds=1)
+    step_us = step_s * 1_000_000
+    return -(-micro // step_us) * step_us // 1_000_000
 
 
 def test_1_cities(conn):
@@ -88,9 +98,10 @@ def test_4_quotes(conn):
     t0 = min(c["ts"] for c in raw)
     t1 = max(c["ts"] for c in raw)
     step_s = 15 * 60
-    first = (int(t0.timestamp()) // step_s) * step_s + step_s
-    last = (int(t1.timestamp()) // step_s) * step_s + step_s  # <= t1 + 15 min
+    first = ceil_to_grid(t0, step_s)
+    last = ceil_to_grid(t1, step_s)
     expected_steps = [dt.datetime.fromtimestamp(s, UTC) for s in range(first, last + 1, step_s)]
+    assert expected_steps[0] - STEP < t0 <= expected_steps[0]
     for t in tickers:
         steps = [r["ts"] for r in rows if r["market_ticker"] == t]
         assert steps == expected_steps, f"{t}: steps differ, got {len(steps)} expected {len(expected_steps)}"
@@ -119,6 +130,54 @@ def test_4b_quotes_step_other(conn):
     rows = market.quotes(conn, NY, 60)
     assert all(r["ts"].minute == 0 for r in rows), "60-minute grid not aligned"
     assert len({r["market_ticker"] for r in rows}) == 6
+
+
+def test_10_volume_conserved(conn):
+    for event in (NY, CHI):
+        rows = market.quotes(conn, event, 15)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT c.market_ticker, sum(c.volume) AS vol, min(c.ts) AS t0, max(c.ts) AS t1 "
+                "FROM candle c JOIN market m ON m.ticker = c.market_ticker "
+                "WHERE m.event_ticker = %s GROUP BY c.market_ticker", (event,))
+            raw = {r["market_ticker"]: r for r in cur.fetchall()}
+        assert len(raw) == 6, (event, len(raw))
+        t0 = min(r["t0"] for r in raw.values())
+        t1 = max(r["t1"] for r in raw.values())
+        first = dt.datetime.fromtimestamp(ceil_to_grid(t0, 900), UTC)
+        last = dt.datetime.fromtimestamp(ceil_to_grid(t1, 900), UTC)
+        for ticker, r in raw.items():
+            mine = [x for x in rows if x["market_ticker"] == ticker]
+            assert sum(x["volume"] for x in mine) == r["vol"], (ticker, sum(x["volume"] for x in mine), r["vol"])
+            assert mine[0]["ts"] == first and mine[-1]["ts"] == last, (ticker, mine[0]["ts"], mine[-1]["ts"], first, last)
+
+
+def test_11_edge_fixture(_conn):
+    admin = connect()
+    admin.autocommit = True
+    admin.execute(f"DROP DATABASE IF EXISTS {TEST_DB}")
+    admin.execute(f"CREATE DATABASE {TEST_DB}")
+    try:
+        with connect(TEST_DB) as conn:
+            conn.execute(SCHEMA.read_text())
+            conn.execute("INSERT INTO underlying (underlying_id, description) VALUES ('U', 'test')")
+            conn.execute("INSERT INTO series (ticker, underlying_id) VALUES ('S', 'U')")
+            conn.execute("INSERT INTO event (ticker, series_ticker, underlying_id, event_date, settlement_source) "
+                         "VALUES ('S-E', 'S', 'U', '2026-01-01', 'test')")
+            conn.execute("INSERT INTO market (ticker, event_ticker, open_time, close_time) "
+                         "VALUES ('S-E-M', 'S-E', %s, %s)", (utc(2026, 1, 1, 0), utc(2026, 1, 2, 0)))
+            for hh, mm, vol in ((12, 0, 5), (12, 10, 3), (12, 40, 2)):
+                conn.execute("INSERT INTO candle (market_ticker, ts, yes_bid, yes_ask, volume) "
+                             "VALUES ('S-E-M', %s, 0.40, 0.50, %s)",
+                             (dt.datetime(2026, 1, 1, hh, mm, tzinfo=UTC), vol))
+            rows = market.quotes(conn, "S-E", 15)
+            got = [(r["ts"], r["volume"]) for r in rows]
+            want = [(dt.datetime(2026, 1, 1, 12, m, tzinfo=UTC), Decimal(v))
+                    for m, v in ((0, 5), (15, 3), (30, 0), (45, 2))]
+            assert got == want, (got, want)
+    finally:
+        admin.execute(f"DROP DATABASE IF EXISTS {TEST_DB}")
+        admin.close()
 
 
 def test_5_observations(conn):
@@ -218,6 +277,8 @@ TESTS = [
     ("3 ladder", test_3_ladder),
     ("4 quotes vs raw candles", test_4_quotes),
     ("4b quotes 60-minute grid (extra)", test_4b_quotes_step_other),
+    ("10 volume conserved per market", test_10_volume_conserved),
+    ("11 edge fixture in throwaway db", test_11_edge_fixture),
     ("5 observations", test_5_observations),
     ("6 forecasts", test_6_forecasts),
     ("7 official", test_7_official),

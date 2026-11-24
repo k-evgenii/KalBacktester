@@ -105,6 +105,26 @@ A backfill is adding data while these run, so every test uses fixed events, neve
 9. The functions never write: the transaction status after each call is idle with no changes
    (call them inside a transaction and roll back; row counts of the trading tables unchanged).
 
+
+## Spec correction (lead, after Track C's C08 QA)
+Bug in the first version: the first step was `date_bin(t0) + step`, so a candle exactly on a bin edge at
+`t0` fell in no window (repro: candles 12:00 vol 5, 12:10 vol 3, 12:40 vol 2, step 15 → summed volume 5,
+should be 10). Both ends of the step series are the **ceiling** of t0 and t1 on the grid:
+```sql
+steps AS (SELECT generate_series(
+            date_bin(make_interval(mins => %(s)s), span.t0 - interval '1 microsecond',
+                     TIMESTAMPTZ '2000-01-01 00:00+00') + make_interval(mins => %(s)s),
+            date_bin(make_interval(mins => %(s)s), span.t1 - interval '1 microsecond',
+                     TIMESTAMPTZ '2000-01-01 00:00+00') + make_interval(mins => %(s)s),
+            make_interval(mins => %(s)s)) AS ts FROM span)
+```
+Every candle then lies in exactly one window (ts − step, ts]. Added agreed tests:
+10. For KXHIGHNY-26NOV22 and KXHIGHCHI-26NOV22, per market, the sum of `quotes().volume` equals the sum of
+    `candle.volume`; the first step is the ceiling of the first candle's `ts`, the last the ceiling of the last.
+11. Edge fixture in a throwaway database (schema plus a hand-made market): candles at 12:00 (5),
+    12:10 (3) and 12:40 (2), step 15. Expect steps 12:00, 12:15, 12:30, 12:45 with volumes 5, 3, 0, 2.
+Test 4's independent grid must use the same ceiling rule.
+
 ## Done when
 - `uv run python -m tests.query.check_queries` exits 0.
 
