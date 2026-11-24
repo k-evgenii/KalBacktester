@@ -110,7 +110,7 @@ def analytics_page(conn, run_id):
         drawdown_section(run_id, curve, m),
         daily_section(daily),
         city_section(trade_rows),
-        event_section(event_rows, trade_rows),
+        event_section(run_id, event_rows, trade_rows),
         trades_section(trade_rows),
     ]
     return page(title, "".join(sections), "runs")
@@ -202,7 +202,7 @@ def city_section(trade_rows):
     return f'<section class="panel"><h2>P&amp;L by city</h2>{table(head, rows)}</section>'
 
 
-def event_section(event_rows, trade_rows):
+def event_section(run_id, event_rows, trade_rows):
     per_event = {}   # event_ticker -> [trades, net pnl]
     for t in trade_rows:
         row = per_event.setdefault(t["event_ticker"], [0, Decimal(0)])
@@ -214,11 +214,13 @@ def event_section(event_rows, trade_rows):
     for e in sorted(event_rows, key=lambda r: (r["event_date"], r["event_ticker"])):
         n_trades, net = per_event[e["event_ticker"]]
         link = f'<a href="/markets/{esc(e["underlying_id"])}/{e["event_date"]}">{e["event_date"]}</a>'
+        event_link = (f'<a class="mono" href="/runs/{run_id}/events/{esc(e["event_ticker"])}">'
+                      f'{esc(e["event_ticker"])}</a>')
         rows.append(
             "<tr>"
             + td(link, "mono")
             + td(esc(e["underlying_id"]), "mono")
-            + td(esc(e["event_ticker"]), "mono")
+            + td(event_link, "mono")
             + td(count(n_trades), "num")
             + td(pnl(net), "num")
             + td(money(e["max_worst_loss"]), "num")

@@ -130,3 +130,9 @@ td.hit { font-weight: 700; }
 .bar-pos { fill: var(--ok-dot); }
 .bar-neg { fill: var(--red-dot); }
 .bar-zero { fill: var(--divider); }
+
+/* C14 fills on the price chart */
+.pc-grid { stroke: var(--divider); stroke-width: 1; }
+.pc-axis { fill: var(--muted); font: 11px var(--mono); }
+.fill-buy { fill: var(--ok-dot); stroke: var(--surface); stroke-width: 1.5; }
+.fill-sell { fill: var(--red-dot); stroke: var(--surface); stroke-width: 1.5; }
