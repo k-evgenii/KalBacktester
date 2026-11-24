@@ -1,8 +1,7 @@
 """Screen 2: the portfolio of one run, day by day, from the portfolio_* views."""
 from decimal import Decimal
 
-from ui.layout import MISSING, chip, count, esc, money, page, price
-from ui.runs import table, td
+from ui.layout import MISSING, chip, count, esc, money, page, price, table, td
 
 DAILY_SQL = """
 SELECT day, starting_cash, premium_paid, premium_received, fees, payouts, cash_end,
