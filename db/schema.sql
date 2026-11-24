@@ -592,3 +592,12 @@ COMMENT ON COLUMN event_outcome.ladder_pos IS 'From market_bracket: position wit
 COMMENT ON COLUMN event_outcome.settled_high_f IS 'Settled daily high in degrees Fahrenheit: official_daily value with source kalshi for the event station and day; null until known.';
 COMMENT ON COLUMN event_outcome.result IS 'Kalshi result of the market, yes or no; null until settled.';
 COMMENT ON COLUMN event_outcome.expected_result IS 'yes if settled_high_f is inside the bracket, else no; null if settled_high_f or category is null.';
+
+-- ---------------------------------------------------------------------------
+-- Station names in Kalshi's rules text (unit 014)
+-- ---------------------------------------------------------------------------
+ALTER TABLE station ADD COLUMN rules_names text[] NOT NULL DEFAULT '{}';
+COMMENT ON COLUMN station.rules_names IS
+    'Phrases that identify this station in Kalshi rules text, e.g. (CLINYC), Central Park, New York. '
+    'A market''s rules_primary must contain at least one of them (case-sensitive). '
+    'Filled by hand from the rules-wording survey.';

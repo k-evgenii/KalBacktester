@@ -2,7 +2,7 @@
 
 Fetches station metadata, NWS daily climate (CLI) rows, hourly ASOS observations and
 hourly forecasts of ten models at lead days 0-7, saves the raw responses under
-api_probe/weather/dump/<station>/ and writes a coverage report.
+api_probe/weather/dump/<station>/ (or --out) and writes a coverage report.
 
 Run from the repo root:
   uv run python api_probe/weather/dump_weather.py --station KNYC --network NY_ASOS \
@@ -222,10 +222,11 @@ def main():
     parser.add_argument("--network", required=True)
     parser.add_argument("--start", required=True, type=date.fromisoformat)
     parser.add_argument("--end", required=True, type=date.fromisoformat)
+    parser.add_argument("--out", type=Path, help="output folder (default dump/<station>/ next to this script)")
     args = parser.parse_args()
 
     iem_id = args.station[1:]  # KNYC -> NYC
-    out_dir = Path(__file__).parent / "dump" / args.station
+    out_dir = args.out or Path(__file__).parent / "dump" / args.station
     out_dir.mkdir(parents=True, exist_ok=True)
 
     feature = fetch_station(args.network, iem_id)

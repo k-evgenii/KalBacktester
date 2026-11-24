@@ -1,4 +1,4 @@
-"""Checks the ingestion QA gate on tampered copies of the KXHIGHNY dump (spec 004, tests 1 to 14).
+"""Checks the ingestion QA gate on tampered copies of the KXHIGHNY dump (specs 004, 010, 015).
 
 Every test copies the real dump into a temporary folder, makes one change, and runs run_checks
 against the live database. The real dump and the database are only read.
@@ -7,14 +7,16 @@ import json
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from db.connect import connect
-from ingest.qa_kxhighny_dump import run_checks
+from ingest.qa_kxhighny_dump import check_14, run_checks
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DUMP = Path("/home/kondr/KalBacktester/api_probe/kalshi/KXHIGHNY")
+JUNE_DUMP = ROOT / "api_probe" / "kalshi" / "KXHIGHNY_2026-06-01_2026-06-07"
+AUGUST_DUMP = ROOT / "api_probe" / "kalshi" / "KXHIGHNY_2026-08-12_2026-08-18"
 TABLES = ["underlying", "series", "event", "market", "candle",
           "run", "order_intent", "order_outcome", "settlement", "position_snapshot"]
 
@@ -38,10 +40,10 @@ def row_counts():
     return counts
 
 
-def copy_dump(tmp):
-    """Copy the real dump (without report files) into tmp and return the copy's path."""
+def copy_dump(tmp, source=DUMP):
+    """Copy a real dump (default: November; without report files) into tmp and return the copy's path."""
     copy = Path(tmp) / "KXHIGHNY"
-    shutil.copytree(DUMP, copy, ignore=shutil.ignore_patterns("_report.json", "_qa_report.json"))
+    shutil.copytree(source, copy, ignore=shutil.ignore_patterns("_report.json", "_qa_report.json"))
     return copy
 
 
@@ -343,6 +345,124 @@ with tempfile.TemporaryDirectory() as tmp:
     save_json(copy / "markets.json", data)
     print(f"  {target['ticker']}: rules_primary The Weather Company -> the National Weather Service")
     expect_block("18 wrong settlement source is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Test 19 (spec 015 test 2): the gate passes each real dump, checks 22 and 23 pass
+for dump in (DUMP, JUNE_DUMP, AUGUST_DUMP):
+    rep = run_checks(dump, conn)
+    statuses = {i: checks_by_id(rep).get(i, {}).get("status") for i in (22, 23)}
+    report(f"19 real dump {dump.name} is PASS and checks 22 and 23 pass",
+           rep["verdict"] == "PASS" and all(s == "pass" for s in statuses.values()),
+           f"verdict {rep['verdict']}, statuses {statuses}, check 22 {checks_by_id(rep).get(22)}, check 23 {checks_by_id(rep).get(23)}")
+
+# Test 20 (spec 015 test 3a): station named by none of its rules_names
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("(CLINYC)", "(CLIXYZ)").replace("New York City", "Gotham")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: rules_primary (CLINYC) -> (CLIXYZ), New York City -> Gotham")
+    expect_block("20 station not named is BLOCK, check 22", run_checks(copy, conn), [22])
+
+# Test 21 (spec 015 test 3b): November market naming the wrong source for its date
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("The Weather Company", "National Weather Service")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: The Weather Company -> National Weather Service")
+    expect_block("21 wrong source for the date is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Test 22 (spec 015 test 3c): rules naming both sources
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"] + " National Weather Service"
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: ' National Weather Service' appended")
+    expect_block("22 both sources named is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Test 23 (spec 015 test 3d): June market naming The Weather Company
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp, JUNE_DUMP)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    target["rules_primary"] = target["rules_primary"].replace("National Weather Service", "The Weather Company")
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: National Weather Service -> The Weather Company")
+    expect_block("23 June market naming The Weather Company is BLOCK, check 23", run_checks(copy, conn), [23])
+
+# Spec 017 tests: check 14 compares market times in the station's local time
+def check14(rep):
+    return checks_by_id(rep)[14]
+
+
+# Test 24 (spec 017 test 1): November dump, check 14 passes
+rep = run_checks(DUMP, conn)
+report("24 November dump: check 14 passes", check14(rep)["status"] == "pass", f"{check14(rep)}")
+
+# Test 25 (spec 017 test 2): June dump (summer time), check 14 passes
+rep = run_checks(JUNE_DUMP, conn)
+report("25 June dump: check 14 passes", check14(rep)["status"] == "pass", f"{check14(rep)}")
+
+# Test 26 (spec 017 test 3): August dump, exactly 12 open_time problems on the two irregular events.
+# The report keeps only 10 examples, so the full list is built by running check_14 once per event
+# (at most 6 problems each).
+rep = run_checks(AUGUST_DUMP, conn)
+c14 = check14(rep)
+august_markets = load_json(AUGUST_DUMP / "markets.json")["markets"]
+problems = []
+for event in sorted({m["event_ticker"] for m in august_markets}):
+    one_event = [m for m in august_markets if m["event_ticker"] == event]
+    problems += check_14({"markets": one_event}, conn)["examples"]
+irregular_markets = {m["ticker"] for m in august_markets
+                     if m["event_ticker"] in ("KXHIGHNY-26AUG14", "KXHIGHNY-26AUG15")}
+problem_tickers = {p.split(":")[0] for p in problems}
+report("26 August dump: check 14 warns with 12 open_time problems on AUG14 and AUG15 markets, none on close_time",
+       c14["status"] == "fail" and c14["severity"] == "WARN" and c14["detail"] == "12 problem(s)"
+       and rep["verdict"] == "PASS"
+       and len(problems) == 12 and len(irregular_markets) == 12
+       and all("open_time" in p and "close_time" not in p for p in problems)
+       and problem_tickers == irregular_markets
+       and all("open_time" in e for e in c14["examples"]),
+       f"check 14 {c14}, problems {problems}")
+
+# Test 27 (spec 017 test 4): November copy, one market's close_time one hour later
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    old_close = target["close_time"]
+    new_close = (datetime.fromisoformat(old_close.replace("Z", "+00:00")) + timedelta(hours=1)
+                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    target["close_time"] = new_close
+    save_json(copy / "markets.json", data)
+    print(f"  {target['ticker']}: close_time {old_close} -> {new_close}")
+    rep = run_checks(copy, conn)
+    c14 = check14(rep)
+    names = [e for e in c14["examples"] if target["ticker"] in e and "close_time" in e]
+    c16_names = [e for e in checks_by_id(rep)[16]["examples"] if target["ticker"] in e and "close_time" in e]
+    report("27 close_time one hour later: check 14 warns naming the market; check 16 blocks naming it",
+           c14["status"] == "fail" and c14["severity"] == "WARN" and len(c14["examples"]) == 1
+           and len(names) == 1 and rep["verdict"] == "BLOCK" and failed(rep, 16) and len(c16_names) >= 1,
+           f"verdict {rep['verdict']}, check 14 {c14}, check 16 {checks_by_id(rep)[16]}")
+
+# Test 28 (spec 017 test 5): November copy with one market removed everywhere
+with tempfile.TemporaryDirectory() as tmp:
+    copy = copy_dump(tmp)
+    data, markets = markets_of(copy)
+    target = markets[0]
+    data["markets"] = [m for m in markets if m["ticker"] != target["ticker"]]
+    save_json(copy / "markets.json", data)
+    bars_path(copy, target["ticker"]).unlink()
+    (copy / "trades" / (target["ticker"] + ".json")).unlink()
+    print(f"  removed {target['ticker']} from markets, bars and trades")
+    c14 = check14(run_checks(copy, conn))
+    expected = f"{target['event_ticker']}: 5 markets, expected 6"
+    report("28 one market removed: check 14 reports the event has 5 markets",
+           expected in c14["examples"], f"check 14 {c14}")
 
 conn.rollback()
 conn.close()

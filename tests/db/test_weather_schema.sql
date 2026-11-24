@@ -256,7 +256,37 @@ EXCEPTION WHEN unique_violation THEN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- Test 6: the seed (statements copied from db/seed_stations.sql) is applied, and
+-- Unit 014: station.rules_names defaults to '{}' and cannot be NULL
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+    names text[];
+BEGIN
+    SELECT rules_names INTO names FROM station WHERE station_id = 'KTST';
+    IF names IS DISTINCT FROM '{}'::text[] THEN
+        RAISE EXCEPTION 'FAIL: new station rules_names is %, expected {}', names;
+    END IF;
+    RAISE NOTICE 'PASS: a new station gets rules_names = {}';
+
+    BEGIN
+        INSERT INTO station (station_id, name, latitude, longitude, tz_name, std_utc_offset_h,
+                             iem_id, iem_network, rules_names)
+        VALUES ('KNUL', 'x', 0, 0, 'UTC', 0, 'NUL', 'XX_ASOS', NULL);
+        RAISE EXCEPTION 'FAIL: NULL rules_names accepted on insert';
+    EXCEPTION WHEN not_null_violation THEN
+        RAISE NOTICE 'PASS: NULL rules_names refused on insert';
+    END;
+
+    BEGIN
+        UPDATE station SET rules_names = NULL WHERE station_id = 'KTST';
+        RAISE EXCEPTION 'FAIL: NULL rules_names accepted on update';
+    EXCEPTION WHEN not_null_violation THEN
+        RAISE NOTICE 'PASS: NULL rules_names refused on update';
+    END;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 6: the seed (statements copied from db/seed_stations.sql, three of them) is applied, and
 -- applying it again changes nothing
 -- ---------------------------------------------------------------------------
 -- The seed links NYC_HIGH, so make sure the row exists in this transaction.
@@ -272,10 +302,15 @@ ON CONFLICT DO NOTHING;
 
 UPDATE underlying SET station_id = 'KNYC' WHERE underlying_id = 'NYC_HIGH' AND station_id IS NULL;
 
+UPDATE station
+SET rules_names = ARRAY['(CLINYC)', 'Central Park, New York', 'New York City']
+WHERE station_id = 'KNYC' AND rules_names = '{}';
+
 DO $$
 DECLARE
     st text;
     link text;
+    names text[];
 BEGIN
     SELECT s::text INTO st FROM station s WHERE station_id = 'KNYC';
     IF st IS NULL THEN
@@ -289,11 +324,17 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS: NYC_HIGH is linked to KNYC';
 
+    SELECT rules_names INTO names FROM station WHERE station_id = 'KNYC';
+    IF names IS DISTINCT FROM ARRAY['(CLINYC)', 'Central Park, New York', 'New York City'] THEN
+        RAISE EXCEPTION 'FAIL: KNYC rules_names is %', names;
+    END IF;
+    RAISE NOTICE 'PASS: KNYC rules_names are the three phrases';
+
     PERFORM set_config('test.knyc_before', st, true);
     PERFORM set_config('test.station_count_before', (SELECT count(*) FROM station)::text, true);
 END $$;
 
--- second run of the same two statements
+-- second run of the same three statements
 INSERT INTO station
     (station_id, name, latitude, longitude, elevation_m, tz_name, std_utc_offset_h, cli_pil, iem_id, iem_network)
 VALUES
@@ -301,6 +342,10 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 UPDATE underlying SET station_id = 'KNYC' WHERE underlying_id = 'NYC_HIGH' AND station_id IS NULL;
+
+UPDATE station
+SET rules_names = ARRAY['(CLINYC)', 'Central Park, New York', 'New York City']
+WHERE station_id = 'KNYC' AND rules_names = '{}';
 
 DO $$
 DECLARE

@@ -2,6 +2,8 @@
 
 Run from the repo root: uv run python -m ingest.load_weather_dump --station KNYC
 Fills official_daily (nws_cli and kalshi), observation_hourly and forecast_hourly.
+Before writing, Kalshi's settled temperature is compared with the NWS high for each day;
+a pattern of disagreement blocks the load (likely wrong station).
 Safe to run twice: every insert is ON CONFLICT DO NOTHING.
 """
 import argparse
@@ -70,8 +72,49 @@ def cli_rows(station, dump_dir):
     return rows
 
 
-def kalshi_rows(cur):
-    markets = json.loads(MARKETS_FILE.read_text())["markets"]
+def numeric_verdict(n_days, n_mismatches):
+    """'ok', 'warn' or 'block'. Block needs at least 2 mismatched days AND more than 2 % of days."""
+    if n_mismatches == 0:
+        return "ok"
+    if n_mismatches >= 2 and n_mismatches > 0.02 * n_days:
+        return "block"
+    return "warn"
+
+
+def kalshi_values(markets_file):
+    """{event day: expiration_value as Decimal}; all markets of an event must agree."""
+    markets = json.loads(markets_file.read_text())["markets"]
+    by_event = {}
+    for m in markets:
+        by_event.setdefault(m["event_ticker"], set()).add(Decimal(m["expiration_value"]))
+
+    values = {}
+    for event_ticker, event_values in by_event.items():
+        if len(event_values) != 1:
+            sys.exit(f"{event_ticker}: markets carry different expiration_value: {sorted(event_values)}")
+        values[event_date(event_ticker)] = event_values.pop()
+    return values
+
+
+def station_check(station, dump_dir, markets_file):
+    """Compare Kalshi's value with the NWS CLI high on each day both exist; exit 1 on 'block'."""
+    kalshi = kalshi_values(markets_file)
+    nws = {row[1]: row[3] for row in cli_rows(station, dump_dir)}
+
+    days = sorted(day for day in kalshi if day in nws and nws[day] is not None)
+    mismatches = [day for day in days if kalshi[day] != nws[day]]
+    for day in mismatches:
+        print(f"WARN station check: {day} kalshi {kalshi[day]} nws {nws[day]}")
+
+    verdict = numeric_verdict(len(days), len(mismatches))
+    print(f"station check: {len(days)} days compared, {len(mismatches)} mismatches -> {verdict}")
+    if verdict == "block":
+        print("station check: BLOCK, nothing inserted")
+        sys.exit(1)
+
+
+def kalshi_rows(cur, markets_file):
+    markets = json.loads(markets_file.read_text())["markets"]
     by_event = {}
     for m in markets:
         by_event.setdefault(m["event_ticker"], []).append(m)
@@ -137,9 +180,14 @@ def forecast_rows(station, model, forecast_file):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--station", required=True)
-    station = parser.parse_args().station
-    dump_dir = WEATHER_DIR / station
+    parser.add_argument("--dump-dir", type=Path)
+    parser.add_argument("--markets", type=Path, default=MARKETS_FILE)
+    args = parser.parse_args()
+    station = args.station
+    dump_dir = args.dump_dir or WEATHER_DIR / station
     inserted = {}
+
+    station_check(station, dump_dir, args.markets)
 
     with connect() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1 FROM station WHERE station_id = %s", (station,))
@@ -149,7 +197,7 @@ def main():
         cur.executemany(OFFICIAL_DAILY_INSERT, cli_rows(station, dump_dir))
         inserted["official_daily nws_cli"] = cur.rowcount
 
-        cur.executemany(OFFICIAL_DAILY_INSERT, kalshi_rows(cur))
+        cur.executemany(OFFICIAL_DAILY_INSERT, kalshi_rows(cur, args.markets))
         inserted["official_daily kalshi"] = cur.rowcount
 
         cur.executemany(
