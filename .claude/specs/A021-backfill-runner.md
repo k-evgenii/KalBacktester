@@ -59,6 +59,16 @@ print totals per status at the end
 A partial week (Kalshi had no market on some day) is blocked by gate check 2 and logged; that is
 expected and shown in the coverage report later, not worked around.
 
+## Spec corrections (lead, after the build)
+1. `blocked` vs `error`: a non-zero exit of a load step (index 1 or 3) whose output contains `BLOCK` is
+   `blocked`; any other failure, including a timeout, is `error`.
+2. `.gitignore` now ignores every series' dump folders: `api_probe/kalshi/KXHIGH*/` (lead).
+3. **Partial weeks (found by QA):** when Kalshi has no market on some day, the dump script stops with
+   "no markets found for event …", so the week is logged `error` at step 0 (nothing inserted), not
+   `blocked` by gate check 2. Accepted: the log tail names the missing event, and the coverage report
+   will show it. Example: KXHIGHTEWR 2026-08-24..30 (no markets on 24 and 25 Aug). Agreed test 5 is met
+   with that real `error` week plus the fake-step checks of the `blocked` path.
+
 ## Agreed tests (`tests/ingest/check_backfill.py`, qa-tester)
 1. `--dry` lists 24 cities × 13 weeks, marks KXHIGHNY 2026-11-16..22 and KXHIGHCHI 2026-11-16..22 as
    `skip` (already loaded) and everything else `todo`; it writes nothing (row counts and log file

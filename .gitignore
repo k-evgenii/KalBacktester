@@ -53,7 +53,7 @@ htmlcov/
 legacy/data
 
 # raw API dumps
-api_probe/kalshi/KXHIGHNY*/
+api_probe/kalshi/KXHIGH*/
 api_probe/weather/dump*/
 
 # overnight progress files and database backups (local only)
@@ -62,3 +62,6 @@ backups/
 
 # generated backtest reports (Track B)
 backtest/reports/
+
+# backfill runner log
+ingest/backfill_log.jsonl
