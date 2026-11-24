@@ -68,7 +68,8 @@ def td(content, css=""):
 
 
 def page(title, body, active):
-    current = ' aria-current="page"' if active == "runs" else ""
+    runs_current = ' aria-current="page"' if active == "runs" else ""
+    markets_current = ' aria-current="page"' if active == "markets" else ""
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -81,7 +82,7 @@ def page(title, body, active):
 <header class="site-header">
 <div class="header-inner">
 <span class="brand">KalBacktester</span>
-<nav><a href="/runs"{current}>Runs</a></nav>
+<nav><a href="/runs"{runs_current}>Runs</a><a href="/markets"{markets_current}>Markets</a></nav>
 <button type="button" id="theme-toggle" aria-label="Switch light or dark theme">Theme</button>
 </div>
 </header>

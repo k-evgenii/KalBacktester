@@ -1,12 +1,13 @@
 """Local read-only web UI. Run from the repo root: uv run python -m ui.serve [--port 8765] [--db kalbt]"""
 import argparse
 import re
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from db.connect import connect
-from ui import portfolio, runs
+from ui import markets, portfolio, runs
 from ui.layout import esc, page
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -74,13 +75,29 @@ def make_server(port, dbname):
         def send_db_page(self, path):
             run_match = re.fullmatch(r"/runs/(\d{1,18})", path)
             portfolio_match = re.fullmatch(r"/runs/(\d{1,18})/portfolio", path)
-            if path != "/runs" and not run_match and not portfolio_match:
+            city_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})", path)
+            day_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})/(\d{4}-\d{2}-\d{2})", path)
+            if (path not in ("/runs", "/markets") and not run_match and not portfolio_match
+                    and not city_match and not day_match):
                 self.send_html(404, not_found_page())
                 return
+            event_date = None
+            if day_match:
+                try:
+                    event_date = date.fromisoformat(day_match.group(2))
+                except ValueError:
+                    self.send_html(404, not_found_page())
+                    return
             conn = connect(dbname)
             try:
                 conn.read_only = True
-                if portfolio_match:
+                if day_match:
+                    text = markets.day_page(conn, day_match.group(1), event_date)
+                elif city_match:
+                    text = markets.days_page(conn, city_match.group(1))
+                elif path == "/markets":
+                    text = markets.cities_page(conn)
+                elif portfolio_match:
                     text = portfolio.portfolio_page(conn, int(portfolio_match.group(1)))
                 elif run_match:
                     text = runs.run_page(conn, int(run_match.group(1)))

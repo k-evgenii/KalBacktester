@@ -102,3 +102,15 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; }
 .chart-end { fill: var(--accent); }
 .chart-label { fill: var(--text); font: 12px var(--mono); }
+
+.q-panel { margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.q-panel-win { border-color: var(--ok-dot); }
+.q-panel figcaption { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.q-panel svg { width: 100%; height: auto; display: block; }
+.q-yes_ask { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.q-yes_bid { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.q-mid { stroke: var(--divider); stroke-width: 1; }
+.row-win td { font-weight: 600; }
+.quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px;
+  margin: 12px 0 8px; }
+.quote-note { color: var(--muted); font-size: 12px; margin: 0; }
