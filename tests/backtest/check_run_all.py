@@ -16,6 +16,7 @@ Fixture (all forecasts: five models of 56 F at lead 1, so the strategy picks bra
 Each event has a ladder of six markets; B56 (56 to 57) settles yes, the others no.
 """
 import json
+import re
 import subprocess
 import sys
 import traceback
@@ -440,6 +441,23 @@ def test_07_missing_db(conn):
 
 
 # ---------------------------------------------------------------------------
+# Test 11: report names carry microseconds
+# ---------------------------------------------------------------------------
+
+def test_11_unique_report_names():
+    before = set(report_files())
+    for _ in range(2):
+        result = cli("--db", TEST_DB, "--dry")
+        check(result.returncode == 0, f"exit {result.returncode}: {result.stderr[-600:]}")
+    new = sorted(set(report_files()) - before)
+    check(len(new) == 2, f"expected 2 new report files, got {[p.name for p in new]}")
+    pattern = re.compile(r"run_all_\d{8}T\d{6}\.\d{6}Z\.json")
+    for path in new:
+        check(path.exists(), f"{path.name} missing")
+        check(pattern.fullmatch(path.name), f"name {path.name} does not match {pattern.pattern}")
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -473,6 +491,8 @@ def main():
             else:
                 report("05 changed strategy param makes a new run", False, "test 03 gave no runs")
             run_test("07 --db missing: argparse error, nothing written", test_07_missing_db, conn)
+            run_test("11 two back-to-back --dry calls write two report files with microsecond names",
+                     test_11_unique_report_names)
 
         with connect(dbname=FIX_DB) as fix:
             fix.execute(SCHEMA.read_text())

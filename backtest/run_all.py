@@ -168,7 +168,7 @@ def main():
     print(f"total: {len(results)} series  {dict(counts)}")
 
     REPORT_DIR.mkdir(exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     path = REPORT_DIR / f"run_all_{stamp}.json"
     path.write_text(json.dumps(results, indent=2))
     print(f"report written to {path}")
