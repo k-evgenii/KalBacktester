@@ -51,6 +51,8 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | C12 | C | run metrics: trades, daily P&L, Sharpe, drawdown, VaR, event risk (`portfolio/metrics.py`) | dev | done (see git log) |
 | C13 | C | UI: analytics page of one run (`/runs/<id>/analytics`) | dev | done (see git log) |
 | C14 | C | UI: a run's fills on the market price chart (`/runs/<id>/events/<event>`); follow-up: guard an event with orders but no fills and no quotes | dev | done (see git log) |
+| B021 | B | port legacy midday_fade; run_all --strategy | dev | done (see git log) |
+| B022 | B | one run of a strategy across every loaded city (`backtest/run_portfolio.py`) | dev | done (see git log) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
