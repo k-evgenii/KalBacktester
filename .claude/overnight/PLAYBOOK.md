@@ -169,6 +169,10 @@ Each step is one command, runnable alone, reading only the database.
 - Deleting saved runs needs a migration from Track A (Track B's NEED, after B019). Track A
   confirms it with the user before applying it, because it relaxes a database protection.
 
+## 7b. PAUSED 2026-11-24 15:45 UTC
+The user shut the terminal. The backfill is paused, resumable (skip 62, todo 250). The resume steps are at the end of
+`.claude/overnight/reports/track-a.md`. Pinned backup: `backups/pinned/20261124T154545Z_pause-backfill.dump`.
+
 ## 8. Morning
 Each track writes a final summary at the end of its progress file. Track A writes the overall
 summary in `track-a.md`: merges and tags, backups, parked units and why, database state and the
