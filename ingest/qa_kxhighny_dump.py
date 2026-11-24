@@ -1,4 +1,4 @@
-"""QA gate for a raw KXHIGHNY dump folder (spec 004).
+"""QA gate for a raw daily-high series dump folder (spec 004; any series since A020).
 
 Run from the repo root: uv run python -m ingest.qa_kxhighny_dump [dump_dir]
 Reads the dump files and the database (SELECT only), prints one line per check, writes
@@ -13,7 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from db.connect import connect
-from ingest.load_kxhighny_dump import DUMP_DIR, TWC_FROM, candle_row, event_date, settlement_source
+from ingest.load_kxhighny_dump import DUMP_DIR, TWC_FROM, candle_row, event_date, series_of, settlement_source
 
 MISSING = object()  # a bar key that is absent under both key styles
 MARKET_FIELDS = ["ticker", "event_ticker", "strike_type", "open_time", "close_time", "status"]
@@ -121,9 +121,21 @@ def check_1(ctx):
     ctx["markets_doc"] = doc
     ctx["markets"] = doc["markets"] if doc else []
 
+    ctx["series"] = None
+    if doc:
+        try:
+            ctx["series"] = series_of(ctx["markets"])
+        except (KeyError, TypeError, AttributeError, ValueError) as error:
+            problems.append(f"series: {error}")
+
+    report_doc = read_json(dump_dir / "_report.json", []) if (dump_dir / "_report.json").exists() else {}
+    ctx["no_trades"] = isinstance(report_doc, dict) and report_doc.get("trades") is False
+
     for folder, list_key, store in [("bars_1min", "candlesticks", "bars_files"), ("trades", "trades", "trades_files")]:
         ctx[store] = {}
         path = dump_dir / folder
+        if folder == "trades" and ctx["no_trades"] and not path.exists():
+            continue
         if not path.is_dir():
             problems.append(f"{folder}/ is not a folder")
             continue
@@ -151,7 +163,7 @@ def check_2(ctx):
     expected = set()
     day = start
     while day <= end:
-        expected.add("KXHIGHNY-" + day.strftime("%y%b%d").upper())
+        expected.add(ctx["series"] + "-" + day.strftime("%y%b%d").upper())
         day += timedelta(days=1)
     found = {m.get("event_ticker") for m in ctx["markets"]}
     if found != expected:
@@ -164,6 +176,9 @@ def check_3(ctx):
     tickers = {m.get("ticker") for m in ctx["markets"]}
     for folder, store, problems in [("bars_1min", "bars_files", block), ("trades", "trades_files", warn)]:
         files = ctx[store]
+        if folder == "trades" and ctx["no_trades"]:
+            warn.append("dump has no trades (fetched with --no-trades)")
+            continue
         for ticker in sorted(t for t in tickers if t not in files):
             problems.append(f"{folder}/{ticker}.json is missing")
         for stem in sorted(files):
@@ -364,10 +379,10 @@ def check_13(ctx):
 
 
 def check_14(ctx, conn):
-    station = station_of(conn)
+    station = station_of(conn, ctx["series"])
     if station is None:
         return {"id": 14, "name": "event size and times", "severity": "WARN", "status": "fail",
-                "detail": "station for KXHIGHNY unknown: cannot check times", "examples": []}
+                "detail": f"station for {ctx['series']} unknown: cannot check times", "examples": []}
     tz = ZoneInfo(station[3])
     problems = []
     for event, ms in events_of(ctx["markets"]).items():
@@ -376,14 +391,14 @@ def check_14(ctx, conn):
         day = event_date(event)
         day_before = day - timedelta(days=1)
         day_after = day + timedelta(days=1)
-        expected_open = datetime(day_before.year, day_before.month, day_before.day, 10, 0, tzinfo=tz)
+        expected_open = datetime(day_before.year, day_before.month, day_before.day, 10, 0, tzinfo=ZoneInfo("America/New_York"))
         allowed_closes = {
             datetime(day_after.year, day_after.month, day_after.day, 0, 59, tzinfo=tz),
             datetime(day_after.year, day_after.month, day_after.day, 1, 0, tzinfo=tz),
         }
         for m in ms:
             if parse_time(m["open_time"]) != expected_open:
-                problems.append(f"{m['ticker']}: open_time {m['open_time']} is not 10:00 local the day before")
+                problems.append(f"{m['ticker']}: open_time {m['open_time']} is not 10:00 ET the day before")
             if parse_time(m["close_time"]) not in allowed_closes:
                 problems.append(f"{m['ticker']}: close_time {m['close_time']} is not 00:59/01:00 local the day after")
     return make_check(14, "event size and times", "WARN", problems)
@@ -459,12 +474,14 @@ def check_18(ctx):
             problems.append(f"{ticker}: no bars")
         elif n_bars / open_minutes < 0.05:
             problems.append(f"{ticker}: bars on {n_bars / open_minutes:.1%} of open minutes")
-        if trades_file is None or not trades_file["trades"]:
+        if not ctx["no_trades"] and (trades_file is None or not trades_file["trades"]):
             problems.append(f"{ticker}: no trades")
     return make_check(18, "coverage", "WARN", problems)
 
 
 def check_19(ctx):
+    if ctx["no_trades"]:
+        return make_check(19, "bar volume vs trade size", "WARN", [], "skipped: no trades")
     problems = []
     for m in ctx["markets"]:
         ticker = m["ticker"]
@@ -479,6 +496,8 @@ def check_19(ctx):
 
 
 def check_20(ctx):
+    if ctx["no_trades"]:
+        return make_check(20, "late trades and empty expiration_value", "WARN", [], "skipped: no trades")
     problems = []
     for m in ctx["markets"]:
         ticker = m["ticker"]
@@ -499,22 +518,22 @@ def check_21(ctx):
 
 # ---------- checks 22-23: the rules text names the right station and source ----------
 
-def station_of(conn):
-    """(station_id, cli_pil, rules_names, tz_name) of KXHIGHNY's station, or None."""
+def station_of(conn, series):
+    """(station_id, cli_pil, rules_names, tz_name) of the series' station, or None."""
     with conn.cursor() as cur:
         cur.execute("""SELECT s.station_id, s.cli_pil, s.rules_names, s.tz_name
                        FROM series se
                        JOIN underlying u ON u.underlying_id = se.underlying_id
                        JOIN station s    ON s.station_id = u.station_id
-                       WHERE se.ticker = 'KXHIGHNY'""")
+                       WHERE se.ticker = %s""", (series,))
         return cur.fetchone()
 
 
 def check_22(ctx, conn):
-    row = station_of(conn)
+    row = station_of(conn, ctx["series"])
     if row is None:
         return {"id": 22, "name": "rules name the station", "severity": "BLOCK", "status": "fail",
-                "detail": "station for KXHIGHNY unknown: seed the station and link the underlying before loading",
+                "detail": f"station for {ctx['series']} unknown: seed the station and link the underlying before loading",
                 "examples": []}
     station_id, cli_pil, names, _ = row
     if not names:

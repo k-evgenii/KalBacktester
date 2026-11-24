@@ -50,7 +50,7 @@ conn = connect()
 cur = conn.cursor()
 
 # Test 4
-cur.execute("SELECT ticker, event_date, settlement_source FROM event")
+cur.execute("SELECT ticker, event_date, settlement_source FROM event WHERE series_ticker = 'KXHIGHNY'")
 db_events = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
 report("4a 21 events in the database", len(db_events) == 21, str(len(db_events)))
 report("4b the database events are exactly the dump events", set(db_events) == set(dump_events),
@@ -68,7 +68,8 @@ report("4d event_date equals the date in the event ticker",
        all(day == event_day(t) for t, (day, _) in db_events.items()))
 
 # Test 5
-cur.execute("SELECT ticker, event_ticker, result FROM market")
+cur.execute("SELECT m.ticker, m.event_ticker, m.result FROM market m JOIN event e ON e.ticker = m.event_ticker "
+            "WHERE e.series_ticker = 'KXHIGHNY'")
 db_markets = {r[0]: r[1:] for r in cur.fetchall()}
 by_event = {}
 for ticker, (event, _) in db_markets.items():

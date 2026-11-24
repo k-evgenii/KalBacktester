@@ -179,7 +179,7 @@ cur.execute("""
     JOIN station st ON st.station_id = u.station_id
     JOIN official_daily od ON od.station_id = st.station_id
                           AND od.climate_date = e.event_date AND od.source = 'kalshi'
-    WHERE e.event_date BETWEEN %s AND %s
+    WHERE e.event_date BETWEEN %s AND %s AND st.station_id = 'KNYC'
     ORDER BY e.ticker""", (FIRST_DAY, LAST_DAY))
 linked = cur.fetchall()
 inside = 0

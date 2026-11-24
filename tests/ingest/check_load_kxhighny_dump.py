@@ -194,10 +194,11 @@ print(proc.stderr.strip())
 print("---------------------------")
 report("6a rerun exits 0", proc.returncode == 0, f"exit {proc.returncode}")
 out = proc.stdout.lower()
+PRINTED = ["event", "market", "candle"]
 lines_by_table = {t: [ln for ln in out.splitlines() if t in ln.split()[0:2] or ln.strip().startswith(t)]
-                  for t in TABLES}
-zero_ok = True
-for t in TABLES:
+                  for t in PRINTED}
+zero_ok = len([ln for ln in out.splitlines() if ln.strip()]) == 3
+for t in PRINTED:
     ls = lines_by_table[t]
     # a line for the table must exist and must contain a 0 and no other nonzero integer
     if not ls:
@@ -207,7 +208,7 @@ for t in TABLES:
         nums = [tok for tok in ln.replace(":", " ").replace("=", " ").split() if tok.isdigit()]
         if not nums or any(int(n) != 0 for n in nums):
             zero_ok = False
-report("6b rerun reports 0 rows inserted for every table", zero_ok, str(lines_by_table))
+report("6b rerun prints exactly the event, market and candle lines, each 0", zero_ok, str(lines_by_table))
 conn = connect()
 cur = conn.cursor()
 after = row_counts(cur)

@@ -1,4 +1,4 @@
-"""Load the one-week KXHIGHNY dump (api_probe/kalshi/KXHIGHNY/) into the reconciliation database.
+"""Load a daily-high series dump (default api_probe/kalshi/KXHIGHNY/) into the reconciliation database.
 
 Run from the repo root: uv run python -m ingest.load_kxhighny_dump [dump_dir]
 The QA gate runs first; on BLOCK nothing is inserted.
@@ -38,6 +38,14 @@ def candle_row(market_ticker, bar):
     return (market_ticker, ts, bid, ask, volume)
 
 
+def series_of(markets):
+    """The one series ticker of a dump's markets (event ticker part before the first '-')."""
+    found = {m["event_ticker"].split("-")[0] for m in markets}
+    if len(found) != 1:
+        raise ValueError(f"a dump must hold exactly one series, found {sorted(found)}")
+    return found.pop()
+
+
 def event_date(event_ticker):
     return datetime.strptime(event_ticker.split("-")[1], "%y%b%d").date()
 
@@ -58,6 +66,13 @@ def main(dump_dir=DUMP_DIR):
     inserted = {}
 
     with connect() as conn, conn.cursor() as cur:
+        series = series_of(markets)
+        cur.execute("SELECT underlying_id FROM series WHERE ticker = %s", (series,))
+        found = cur.fetchone()
+        if found is None:
+            sys.exit(f"series {series} is not seeded: run python -m db.migrate")
+        underlying_id = found[0]
+
         from ingest.qa_kxhighny_dump import run_checks  # import here, not at the top: the gate imports this module
 
         report = run_checks(dump_dir, conn)
@@ -65,20 +80,6 @@ def main(dump_dir=DUMP_DIR):
         if report["verdict"] != "PASS":
             print("QA gate: BLOCK, nothing inserted. See _qa_report.json in the dump folder.")
             sys.exit(1)
-
-        cur.execute(
-            "INSERT INTO underlying (underlying_id, description) VALUES (%s, %s) "
-            "ON CONFLICT DO NOTHING",
-            ("NYC_HIGH", "Daily maximum temperature, New York Central Park (KNYC)"),
-        )
-        inserted["underlying"] = cur.rowcount
-
-        cur.execute(
-            "INSERT INTO series (ticker, underlying_id, title) VALUES (%s, %s, %s) "
-            "ON CONFLICT DO NOTHING",
-            ("KXHIGHNY", "NYC_HIGH", "Highest temperature in NYC"),
-        )
-        inserted["series"] = cur.rowcount
 
         inserted["event"] = 0
         for ticker in event_tickers:
@@ -89,7 +90,7 @@ def main(dump_dir=DUMP_DIR):
             cur.execute(
                 "INSERT INTO event (ticker, series_ticker, underlying_id, event_date, "
                 "settlement_source) VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (ticker, "KXHIGHNY", "NYC_HIGH", event_date(ticker), source),
+                (ticker, series, underlying_id, event_date(ticker), source),
             )
             inserted["event"] += cur.rowcount
 

@@ -189,6 +189,17 @@ def main():
 
     station_check(station, dump_dir, args.markets)
 
+    from ingest.qa_weather_dump import run_checks  # here, not at the top: the gate imports this module
+
+    with connect() as conn:
+        report = run_checks(conn, station, dump_dir, args.markets)
+    if report["verdict"] != "PASS":
+        print("weather QA gate: BLOCK, nothing inserted")
+        for check in report["checks"]:
+            if check["status"] == "block":
+                print(f"  {check['id']}: {check['detail']}")
+        sys.exit(1)
+
     with connect() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1 FROM station WHERE station_id = %s", (station,))
         if cur.fetchone() is None:

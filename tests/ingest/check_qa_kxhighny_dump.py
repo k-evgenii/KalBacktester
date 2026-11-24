@@ -416,7 +416,7 @@ august_markets = load_json(AUGUST_DUMP / "markets.json")["markets"]
 problems = []
 for event in sorted({m["event_ticker"] for m in august_markets}):
     one_event = [m for m in august_markets if m["event_ticker"] == event]
-    problems += check_14({"markets": one_event}, conn)["examples"]
+    problems += check_14({"markets": one_event, "series": "KXHIGHNY"}, conn)["examples"]
 irregular_markets = {m["ticker"] for m in august_markets
                      if m["event_ticker"] in ("KXHIGHNY-26AUG14", "KXHIGHNY-26AUG15")}
 problem_tickers = {p.split(":")[0] for p in problems}
