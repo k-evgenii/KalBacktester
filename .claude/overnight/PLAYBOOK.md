@@ -66,6 +66,8 @@ Each unit has a spec at `.claude/specs/<A|B|C>NN-name.md` in the owning track's 
 - **Migrations** (A018): `db/migrations/NNNN_name.sql` applied by `db/migrate.py` (backup first,
   one transaction per file, recorded in `schema_migration`); the same SQL lands in
   `db/schema.sql`. Only Track A applies migrations.
+- **Before each migration** Track A greps every suite for the tables, views and functions it creates or
+  changes, and warns their owners first (0003 turned 4 'absent on live' checks red).
 - **Undo**: revert a bad merge on `dev`; restore a dump into a fresh database. Never delete rows.
 
 ## 5. Working rules

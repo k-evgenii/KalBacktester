@@ -97,9 +97,9 @@ try:
                           cwd=ROOT, capture_output=True, text=True)
     report("1b CLI migrate a second time prints 'nothing to apply'",
            cli2.returncode == 0 and "nothing to apply" in cli2.stdout, (cli2.returncode, cli2.stdout, cli2.stderr[-300:]))
-    report("1c the real migrations folder holds exactly 0001_baseline.sql and 0002_us_daily_high_stations.sql",
+    report("1c the real migrations folder holds exactly 0001_baseline.sql, 0002_us_daily_high_stations.sql and 0003_portfolio_views.sql",
            sorted(p.name for p in REAL_MIGRATIONS.glob("*.sql")) ==
-           ["0001_baseline.sql", "0002_us_daily_high_stations.sql"])
+           ["0001_baseline.sql", "0002_us_daily_high_stations.sql", "0003_portfolio_views.sql"])
 
     # ---- 2. extra migration applied once
     copy_dir = tmp / "migrations_copy"

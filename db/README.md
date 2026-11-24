@@ -144,11 +144,12 @@ Unit 011 adds two read-only views at the end of `schema.sql`. They store nothing
 Schema changes after the baseline are numbered files in `db/migrations/` (`NNNN_name.sql`).
 `python -m db.migrate [--dbname kalbt]` applies the ones not yet recorded in `schema_migration`,
 each in its own transaction, and on `kalbt` takes a backup first. A recorded file must never be
-edited (its checksum is checked); write a new migration instead. The same SQL also goes into
-`db/schema.sql`, so a fresh build already contains every migration.
+edited (its checksum is checked); write a new migration instead. A migration that changes tables also goes into
+`db/schema.sql`, so a fresh build contains it; 0002 (data) and 0003 (portfolio views) do not,
+and a fresh database gets them by running `python -m db.migrate`.
 
-Data-only migrations (reference rows such as stations, underlyings and series) are not copied
-into `db/schema.sql`; a fresh database gets them by running `python -m db.migrate`.
+Migration 0003 (`0003_portfolio_views.sql`) is a copy of `db/portfolio.sql` (Track C); a change to that file needs a new migration with the full file.
+
 
 Backups are `pg_dump -Fc` files in `backups/db/` (git-ignored, newest 10 kept):
 
