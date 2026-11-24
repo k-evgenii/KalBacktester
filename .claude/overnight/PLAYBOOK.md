@@ -170,7 +170,8 @@ coverage table, what the user can try.
 - **When a spec is wrong:** correct it, add a "Spec correction" section saying why, and send it
   back.
 - **Agents:** call them with the Agent tool, `subagent_type` = `implementer`, `qa-tester`,
-  `reviewer`, or (for research) `kalshi-probe` / `weather-probe`. Always pass `effort: "medium"`.
+  `reviewer`, or (for research) `kalshi-probe` / `weather-probe`. Always pass **both** `model: "sonnet"` and `effort: "medium"`
+  (user rule 2026-11-24: workers are never Opus; the chats themselves are the only Opus).
   They run in the background, and you are notified when one finishes; never poll its output.
   Workers never commit or push.
 - **Messages:** run `ListAgents`, find the other chat by its reference, then use
