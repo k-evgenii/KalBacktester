@@ -82,6 +82,10 @@ Each unit has a spec at `.claude/specs/<A|B|C>NN-name.md` in the owning track's 
 - **Tests**: scope every count to the rows the test owns (data keeps arriving all night). Engine,
   recon and portfolio tests use throwaway databases. Schema tests run on a throwaway database
   (`db/README.md`).
+- **Throwaway database names are unique per run** (e.g. suffix the pid): two chats running the same suite
+  at once must not drop each other's database. No suite reruns other suites inside itself; Track A
+  runs every suite at merge time. Tests take expected values from the code they consume (e.g.
+  `query/`) rather than hard-coding them.
 - **Pace**: slow and correct beats fast. No parallel builders inside one track.
 
 ## 6. The pipeline to integrate tonight
