@@ -7,11 +7,14 @@ Track A's instructions and this playbook.** Anything not covered here is parked 
 ## 0. Who is who
 | Track | Chat name (SendMessage `to`) | Branch / worktree | Next unit |
 |---|---|---|---|
-| A — data, integration, lead | `weather-data-schema-plan` | `dev` in `/home/kondr/KalBacktester` | A018 |
-| B — engine, Kalshi check, backtest | `track-b-matching-engine-plan` | `track-b` in `/home/kondr/KalBacktester-track-b` | B014 |
-| C — portfolio, UI lead | `kalbacktester-track-c-23` | `track-c` in `/home/kondr/KalBacktester-track-c` | C02 |
+| A — data, integration, lead | `overnight-three-track-plan` [c3ee5f] | `dev` in `/home/kondr/KalBacktester` | A018 |
+| B — engine, Kalshi check, backtest | `track-b-matching-engine-plan` [be49c6] | `track-b` in `/home/kondr/KalBacktester-track-b` | B014 |
+| C — portfolio, UI lead | `track-c-portfolio-sql` [fab5d7] | `track-c` in `/home/kondr/KalBacktester-track-c` | C02 |
 
 Numbering: A##, B##, C##, continuing each track's last unit.
+
+Chat names change when a chat is renamed; the reference in brackets does not. If a send fails,
+run ListAgents, find the chat by its reference, and use the name shown there.
 
 ## 1. Each loop wake-up (all tracks)
 1. Read this file and your progress file (section 3).
