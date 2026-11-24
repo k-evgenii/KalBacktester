@@ -44,9 +44,10 @@ def quotes(conn, event_ticker, step_minutes=15):
         WITH m AS (SELECT ticker FROM market WHERE event_ticker = %(e)s),
              span AS (SELECT min(c.ts) AS t0, max(c.ts) AS t1 FROM candle c JOIN m ON c.market_ticker = m.ticker),
              steps AS (SELECT generate_series(
-                         date_bin(make_interval(mins => %(s)s), span.t0, TIMESTAMPTZ '2000-01-01 00:00+00')
-                           + make_interval(mins => %(s)s),
-                         span.t1 + make_interval(mins => %(s)s),
+                         date_bin(make_interval(mins => %(s)s), span.t0 - interval '1 microsecond',
+                                  TIMESTAMPTZ '2000-01-01 00:00+00') + make_interval(mins => %(s)s),
+                         date_bin(make_interval(mins => %(s)s), span.t1 - interval '1 microsecond',
+                                  TIMESTAMPTZ '2000-01-01 00:00+00') + make_interval(mins => %(s)s),
                          make_interval(mins => %(s)s)) AS ts FROM span)
         SELECT m.ticker AS market_ticker, st.ts, last.yes_bid, last.yes_ask,
                (SELECT coalesce(sum(c.volume), 0) FROM candle c
