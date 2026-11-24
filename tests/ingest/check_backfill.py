@@ -108,8 +108,9 @@ mia_log = [json.loads(ln) for ln in log_lines()
            if json.loads(ln)["series"] == "KXHIGHMIA" and json.loads(ln)["monday"] == "2026-11-16"]
 report("3d exactly one Miami log line, status loaded, failed_step null",
        len(mia_log) == 1 and mia_log[0]["status"] == "loaded" and mia_log[0]["failed_step"] is None, str(mia_log)[:300])
-report("3e one backup *_before-backfill-KXHIGHMIA.dump",
-       len([b for b in backup_files() if b.endswith("_before-backfill-KXHIGHMIA.dump")]) == 1)
+# the full backfill run takes one backup per new week, so more than one Miami backup is expected
+report("3e at least one backup *_before-backfill-KXHIGHMIA.dump",
+       len([b for b in backup_files() if b.endswith("_before-backfill-KXHIGHMIA.dump")]) >= 1)
 
 # Test 4: rerun of the Miami command skips and changes nothing
 counts_before, log_before, backups_before = row_counts(), log_lines(), backup_files()

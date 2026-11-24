@@ -46,6 +46,7 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | A022 | A | read-only query layer for UI screens 3-4 (`query/`) | dev | done (see git log) |
 | A023 | A | coverage per city and week (`query/coverage.py`) | dev | done (see git log) |
 | A025 | A | weather dump retries network timeouts | dev | done (see git log) |
+| A026 | A | two ingest checks scoped to their own rows after the backfill (tests only) | dev | done (see git log) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |

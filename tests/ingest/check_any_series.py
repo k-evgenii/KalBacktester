@@ -98,13 +98,16 @@ chi_markets = json.loads((CHI_DUMP / "markets.json").read_text())["markets"]
 dump_count = {}
 for m in chi_markets:
     dump_count[m["event_ticker"]] = dump_count.get(m["event_ticker"], 0) + 1
-cur.execute("SELECT ticker, event_date, underlying_id FROM event WHERE series_ticker = 'KXHIGHCHI' ORDER BY event_date")
+cur.execute("SELECT ticker, event_date, underlying_id FROM event WHERE series_ticker = 'KXHIGHCHI' "
+            "AND event_date BETWEEN '2026-11-16' AND '2026-11-22' ORDER BY event_date")
 events = cur.fetchall()
 report("4a 7 KXHIGHCHI events for 2026-11-16..22",
        [e[1] for e in events] == [date(2026, 11, d) for d in range(16, 23)], str(events))
 report("4b all with underlying MDW_HIGH", all(e[2] == "MDW_HIGH" for e in events) and len(events) == 7, str(events))
-cur.execute("SELECT event_ticker, count(*), count(*) FILTER (WHERE result = 'yes') FROM market "
-            "WHERE event_ticker LIKE 'KXHIGHCHI-%' GROUP BY event_ticker")
+cur.execute("SELECT m.event_ticker, count(*), count(*) FILTER (WHERE m.result = 'yes') FROM market m "
+            "JOIN event e ON e.ticker = m.event_ticker "
+            "WHERE e.series_ticker = 'KXHIGHCHI' AND e.event_date BETWEEN '2026-11-16' AND '2026-11-22' "
+            "GROUP BY m.event_ticker")
 db_markets = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
 bad = {e: v for e, v in db_markets.items() if v != (dump_count.get(e), 1)}
 report("4c every event has the dump's market count and exactly one yes",
@@ -130,7 +133,8 @@ report("5b nws_cli equals kalshi on every day", by_source["nws_cli"] == by_sourc
        f"{by_source['nws_cli']} vs {by_source['kalshi']}")
 cur.execute("SELECT e.event_date, m.strike_type, m.floor_strike, m.cap_strike FROM event e "
             "JOIN market m ON m.event_ticker = e.ticker "
-            "WHERE e.series_ticker = 'KXHIGHCHI' AND m.result = 'yes'")
+            "WHERE e.series_ticker = 'KXHIGHCHI' AND m.result = 'yes' "
+            "AND e.event_date BETWEEN '2026-11-16' AND '2026-11-22'")
 bad = []
 wins = cur.fetchall()
 for day, strike_type, floor, cap in wins:
