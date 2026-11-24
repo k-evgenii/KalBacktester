@@ -80,19 +80,20 @@ def day_page(conn, underlying_id, event_date):
     body = (
         f'<p><a href="/markets/{esc(underlying_id)}">← {esc(underlying_id)} · markets</a></p>'
         f"<h1>{esc(title)}</h1>"
-        + heading_line(event, ladder)
+        + heading_line(event, ladder, underlying_id)
         + ladder_section(ladder, quotes)
         + quotes_section(ladder, quotes)
     )
     return page(title, body, "markets")
 
 
-def heading_line(event, ladder):
+def heading_line(event, ladder, underlying_id):
     high = ladder[0]["settled_high_f"] if ladder else None
     high_text = MISSING if high is None else f'<span class="mono">{esc(high)} °F</span>'
     return (
         f'<p><span class="mono">{esc(event["event_ticker"])}</span> · settled high {high_text} '
-        f'{status_chip(event["settled"])}</p>'
+        f'{status_chip(event["settled"])} · '
+        f'<a href="/markets/{esc(underlying_id)}/{event["event_date"]}/weather">Weather →</a></p>'
     )
 
 

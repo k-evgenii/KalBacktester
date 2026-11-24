@@ -114,3 +114,8 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px;
   margin: 12px 0 8px; }
 .quote-note { color: var(--muted); font-size: 12px; margin: 0; }
+.t-observed { fill: none; stroke: var(--accent); stroke-width: 2; }
+.t-forecast { fill: none; stroke: var(--muted); stroke-width: 1; opacity: 0.6; }
+.t-settled { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 3; }
+.t-axis { fill: var(--muted); font: 11px var(--mono); }
+td.hit { font-weight: 700; }
