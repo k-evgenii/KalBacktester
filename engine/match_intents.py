@@ -1,8 +1,9 @@
 """Matching engine: record what happened to each order intent of one run.
 
 Run from the repo root:
-    uv run python -m engine.match_intents <intents.csv> --strategy NAME [--db NAME]
-Rules are in .claude/specs/012-matching-engine.md. Everything is written in one transaction.
+    uv run python -m engine.match_intents <intents.csv> --strategy NAME [--db NAME] [--save]
+Rules are in .claude/specs/012-matching-engine.md. Everything is written in one transaction,
+which the caller commits; the CLI rolls it back unless --save is given.
 """
 import argparse
 import csv
@@ -350,14 +351,12 @@ def write_run(conn, strategy, params, intents):
 
 
 def match_intents(conn, strategy, params, intents):
-    """Record the outcome of every intent of one run; returns the run_id."""
-    try:
-        run_id = write_run(conn, strategy, params, intents)
-        conn.commit()
-        return run_id
-    except Exception:
-        conn.rollback()
-        raise
+    """Record the outcome of every intent of one run; returns the run_id.
+
+    Never commits or rolls back: the caller owns the transaction (and must roll back
+    if an exception escapes after writes began).
+    """
+    return write_run(conn, strategy, params, intents)
 
 
 def read_csv(path):
@@ -382,22 +381,32 @@ def main():
     parser.add_argument("intents_csv")
     parser.add_argument("--strategy", required=True)
     parser.add_argument("--db", default="kalbt")
+    parser.add_argument("--save", action="store_true", help="keep the run (default: roll back)")
     args = parser.parse_args()
 
     intents = read_csv(args.intents_csv)
     with connect(args.db) as conn:
-        run_id = match_intents(conn, args.strategy, {}, intents)
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT o.outcome, o.reason_code, count(*) FROM order_outcome o "
-                "JOIN order_intent i ON i.intent_id = o.intent_id WHERE i.run_id = %s "
-                "GROUP BY 1, 2 ORDER BY 1, 2",
-                (run_id,),
-            )
-            counts = cur.fetchall()
+        try:
+            run_id = match_intents(conn, args.strategy, {}, intents)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT o.outcome, o.reason_code, count(*) FROM order_outcome o "
+                    "JOIN order_intent i ON i.intent_id = o.intent_id WHERE i.run_id = %s "
+                    "GROUP BY 1, 2 ORDER BY 1, 2",
+                    (run_id,),
+                )
+                counts = cur.fetchall()
+        except Exception:
+            conn.rollback()
+            raise
+        if args.save:
+            conn.commit()
+        else:
+            conn.rollback()
     print(f"run_id {run_id}")
     for outcome, reason_code, count in counts:
         print(f"{outcome:9} {reason_code or '-':20} {count}")
+    print("saved" if args.save else "not saved (rolled back)")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,9 @@ and event EV-0602 (no nws_cli row) with market M4.
 All markets open 2026-05-31 15:00 UTC and close 2026-06-02 06:00 UTC; settled markets settle
 2026-06-02 12:00 UTC. Official high time "300 PM" at offset -5 gives lock 2026-06-01 20:00 UTC.
 """
+import subprocess
+import sys
+import tempfile
 import traceback
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -19,7 +22,8 @@ from pathlib import Path
 from db.connect import connect
 from engine.match_intents import match_intents
 
-SCHEMA = Path(__file__).resolve().parent.parent.parent / "db" / "schema.sql"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SCHEMA = REPO_ROOT / "db" / "schema.sql"
 TEST_DB = "kalbt_engine_test"
 TABLES = ["run", "order_intent", "order_outcome", "settlement", "position_snapshot"]
 
@@ -563,6 +567,78 @@ def test_26_lock_time_conversion(conn, ctx):
                      [refused("blocked", "after_daily_high", lock)]], f"outcomes {market}")
 
 
+def run_rows(conn, run_id):
+    """Rows of one run in every table that carries run_id, plus its outcomes. Zero means invisible."""
+    cur = conn.cursor()
+    total = 0
+    for table in ("run", "order_intent", "settlement", "position_snapshot"):
+        cur.execute(f"SELECT count(*) FROM {table} WHERE run_id = %s", (run_id,))
+        total += cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM order_outcome o JOIN order_intent i ON i.intent_id = o.intent_id"
+                " WHERE i.run_id = %s", (run_id,))
+    return total + cur.fetchone()[0]
+
+
+def test_e1_other_connection_sees_run_only_after_commit(conn, ctx):
+    run_id = match_intents(conn, "e1", {}, [intent(at(6, 1, 3, 0), M2, "yes", "buy", 12)])
+    assert run_rows(conn, run_id) > 0, "the writing connection does not see its own run"
+    other = connect(dbname=TEST_DB)
+    try:
+        check_equal(run_rows(other, run_id), 0, "rows of the run seen from connection B before commit")
+        other.rollback()
+        conn.commit()
+        assert run_rows(other, run_id) > 0, "connection B sees nothing after commit"
+    finally:
+        other.close()
+
+
+def test_e2_rollback_removes_the_run(conn, ctx):
+    run_id = match_intents(conn, "e2", {}, [intent(at(6, 1, 3, 0), M2, "yes", "buy", 12)])
+    assert run_rows(conn, run_id) > 0, "the writing connection does not see its own run"
+    conn.rollback()
+    check_equal(run_rows(conn, run_id), 0, "rows of the run after rollback")
+
+
+def committed_counts():
+    other = connect(dbname=TEST_DB)
+    try:
+        return row_counts(other)
+    finally:
+        other.close()
+
+
+def engine_cli(csv_path, *extra):
+    return subprocess.run([sys.executable, "-m", "engine.match_intents", str(csv_path),
+                           "--strategy", "e3", "--db", TEST_DB, *extra],
+                          cwd=REPO_ROOT, capture_output=True, text=True)
+
+
+def test_e3_cli_save_flag(conn, ctx):
+    conn.commit()
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_path = Path(tmp) / "intents.csv"
+        csv_path.write_text("decided_at,market_ticker,side,action,quantity,reason\n"
+                            f"{at(6, 1, 3, 0).isoformat()},{M2},yes,buy,12,\n")
+        before = committed_counts()
+        result = engine_cli(csv_path)
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr[-600:]}"
+        lines = result.stdout.splitlines()
+        assert lines[0].startswith("run_id "), f"first line {lines[0]!r}"
+        assert any(line.split()[:1] == ["filled"] and line.split()[-1] == "1" for line in lines), \
+            f"no filled count line: {lines}"
+        check_equal(lines[-1], "not saved (rolled back)", "last line")
+        check_equal(committed_counts(), before, "trading tables after a run without --save")
+
+        result = engine_cli(csv_path, "--save")
+        assert result.returncode == 0, f"exit {result.returncode}: {result.stderr[-600:]}"
+        lines = result.stdout.splitlines()
+        assert lines[0].startswith("run_id "), f"first line {lines[0]!r}"
+        check_equal(lines[-1], "saved", "last line")
+        after = committed_counts()
+        check_equal(after["run"], before["run"] + 1, "run count after --save")
+        check_equal(after["order_intent"], before["order_intent"] + 1, "intent count after --save")
+
+
 def test_18_live_database_untouched(live_before):
     live_conn = connect()
     live_after = row_counts(live_conn)
@@ -585,6 +661,8 @@ def run_test(name, function, *args):
         except Exception:
             pass
     else:
+        if hasattr(args[0], "commit"):
+            args[0].commit()  # keep the finished test's run, so a later rollback cannot remove it
         report(name, True)
 
 
@@ -629,6 +707,9 @@ def main():
         run_test("24 (extra) sell larger than the holding, and volume cap on a sell", test_24_sell_larger_than_holding, conn, ctx)
         run_test("25 (extra) fill at close_time allowed", test_25_fill_at_close_time, conn, ctx)
         run_test("26 (extra) lock time conversion", test_26_lock_time_conversion, conn, ctx)
+        run_test("E1 another connection sees the run only after commit", test_e1_other_connection_sees_run_only_after_commit, conn, ctx)
+        run_test("E2 rollback removes the run", test_e2_rollback_removes_the_run, conn, ctx)
+        run_test("E3 CLI: not saved by default, one more run with --save", test_e3_cli_save_flag, conn, ctx)
     finally:
         if conn is not None:
             conn.close()

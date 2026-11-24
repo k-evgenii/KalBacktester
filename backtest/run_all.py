@@ -1,9 +1,9 @@
 """Run the forecast_favourite strategy over every loaded city series, reconcile each run, summarise.
 
 Run from the repo root:
-    uv run python -m backtest.run_all --db NAME [--dry] [--series TICKER ...]
-Runs are permanent: a series whose identical run is already done is skipped (not repeated).
---dry writes nothing. Rules are in .claude/specs/B017-backtest-harness.md.
+    uv run python -m backtest.run_all --db NAME [--dry] [--save] [--series TICKER ...]
+Each run is reconciled, then rolled back unless --save is given. --dry writes nothing.
+Rules are in .claude/specs/B017-backtest-harness.md and B019-runs-throwaway-by-default.md.
 """
 import argparse
 import json
@@ -11,8 +11,6 @@ import sys
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-
-from psycopg.types.json import Jsonb
 
 from db.connect import connect
 from engine.match_intents import match_intents
@@ -35,17 +33,6 @@ GROUP BY e.series_ticker, e.underlying_id, u.station_id
 ORDER BY e.series_ticker
 """
 
-EXISTING_RUN_SQL = """
-SELECT run_id FROM run
-WHERE strategy = 'forecast_favourite' AND status = 'done'
-  AND date_start = %(start)s AND date_end = %(end)s
-  AND params @> %(strategy_params)s::jsonb
-  AND EXISTS (SELECT 1 FROM order_intent i JOIN market m ON m.ticker = i.market_ticker
-              JOIN event e ON e.ticker = m.event_ticker
-              WHERE i.run_id = run.run_id AND e.series_ticker = %(series)s)
-ORDER BY run_id LIMIT 1
-"""
-
 
 def loaded_series(conn):
     """Series with at least one event that has candles and a kalshi official value."""
@@ -61,24 +48,7 @@ def loaded_series(conn):
     ]
 
 
-def find_existing_run(conn, series_ticker, intents, params):
-    """run_id of an identical done run of this series, or None."""
-    decided = [i["decided_at"] for i in intents]
-    with conn.cursor() as cur:
-        cur.execute(
-            EXISTING_RUN_SQL,
-            {
-                "start": min(decided).astimezone(UTC).date(),
-                "end": max(decided).astimezone(UTC).date(),
-                "strategy_params": Jsonb(params),
-                "series": series_ticker,
-            },
-        )
-        row = cur.fetchone()
-    return row[0] if row else None
-
-
-def run_series(conn, series, params, dry):
+def run_series(conn, series, params, dry, save):
     series_ticker = series["series_ticker"]
     intents, infos = intents_for_series(
         conn, series_ticker, series["date_start"], series["date_end"], params
@@ -98,24 +68,28 @@ def run_series(conn, series, params, dry):
         "failed_checks": [],
         "outcomes": None,
         "settlements": None,
+        "saved": False,
     }
 
     if not intents:
         result["status"] = "no_intents"
         return result
 
-    existing = find_existing_run(conn, series_ticker, intents, params)
-    if existing is not None:
-        result["status"] = "already_done"
-        result["run_id"] = existing
-        return result
-
     if dry:
         result["status"] = "dry"
         return result
 
-    run_id = match_intents(conn, "forecast_favourite", params, intents)
-    report = check_run(conn, run_id)
+    try:
+        run_id = match_intents(conn, "forecast_favourite", params, intents)
+        report = check_run(conn, run_id)  # same connection: sees the uncommitted rows
+    except Exception:
+        conn.rollback()
+        raise
+    if save:
+        conn.commit()
+    else:
+        conn.rollback()
+    result["saved"] = save
     result["status"] = "ran"
     result["run_id"] = run_id
     result["recon_verdict"] = report["verdict"]
@@ -141,15 +115,19 @@ def print_result(r):
             f"  filled/rejected/blocked {o['filled']}/{o['rejected']}/{o['blocked']}"
             f"  settlements {r['settlements']}"
         )
+        line += "  saved" if r["saved"] else "  not saved"
     print(line)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run the reference strategy over every loaded series.")
-    parser.add_argument("--db", required=True, help="database name (no default, runs are permanent)")
+    parser.add_argument("--db", required=True, help="database name (no default)")
     parser.add_argument("--dry", action="store_true", help="list what would run, write nothing")
+    parser.add_argument("--save", action="store_true", help="keep the runs (default: roll back)")
     parser.add_argument("--series", nargs="+", help="only these series tickers")
     args = parser.parse_args()
+    if args.dry and args.save:
+        parser.error("--dry and --save cannot be used together")
 
     conn = connect(args.db)
     try:
@@ -158,7 +136,7 @@ def main():
             all_series = [s for s in all_series if s["series_ticker"] in args.series]
         results = []
         for series in all_series:
-            result = run_series(conn, series, dict(DEFAULTS), args.dry)
+            result = run_series(conn, series, dict(DEFAULTS), args.dry, args.save)
             print_result(result)
             results.append(result)
     finally:
