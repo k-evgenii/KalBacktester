@@ -8,7 +8,7 @@ Track A's instructions and this playbook.** Anything not covered here is parked 
 | Track | Chat (find with ListAgents) | Branch / worktree | Next unit |
 |---|---|---|---|
 | A — data, integration, lead | reference **[80f958]** | `dev` in `/home/kondr/KalBacktester` | A019 (uncommitted), then A020 |
-| B — engine, Kalshi check, backtest | new chat, restarted 2026-11-24 (it reports its reference in its ACK) | `track-b` in `/home/kondr/KalBacktester-track-b` | finish B016; B015 waits to merge |
+| B — engine, Kalshi check, backtest | reference **[ba10d4]** (restarted 2026-11-24) | `track-b` in `/home/kondr/KalBacktester-track-b` | finish B016; B015 waits to merge |
 | C — portfolio, UI lead | reference **[9bbe78]** | `track-c` in `/home/kondr/KalBacktester-track-c` | C03 |
 
 Numbering: A##, B##, C##, continuing each track's last unit.
