@@ -39,6 +39,7 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | C02 | C | portfolio day-by-day views | track-c | done, merged into dev 6d559cc |
 | A018 | A | migrations (`db/migrate.py`) and backups (`db/backup.py`) | dev | done (see git log) |
 | B014 | B | first live engine run (run 31), reconciled PASS | track-b | done, merged into dev 81e09e2 |
+| A019 | A | seed every active US daily-high city (migration 0002) | dev | done (see git log) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
