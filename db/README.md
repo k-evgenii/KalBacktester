@@ -147,6 +147,9 @@ each in its own transaction, and on `kalbt` takes a backup first. A recorded fil
 edited (its checksum is checked); write a new migration instead. The same SQL also goes into
 `db/schema.sql`, so a fresh build already contains every migration.
 
+Data-only migrations (reference rows such as stations, underlyings and series) are not copied
+into `db/schema.sql`; a fresh database gets them by running `python -m db.migrate`.
+
 Backups are `pg_dump -Fc` files in `backups/db/` (git-ignored, newest 10 kept):
 
 ```bash

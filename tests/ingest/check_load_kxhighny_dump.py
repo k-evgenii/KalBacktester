@@ -57,6 +57,10 @@ def row_counts(cur):
 def dump_row_counts(cur):
     """Rows of the November dump only: underlying and series in full, the rest by dump ticker."""
     counts = row_counts(cur)
+    cur.execute("SELECT count(*) FROM underlying WHERE underlying_id = 'NYC_HIGH'")
+    counts["underlying"] = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM series WHERE ticker = 'KXHIGHNY'")
+    counts["series"] = cur.fetchone()[0]
     cur.execute("SELECT count(*) FROM event WHERE ticker = ANY(%s)", (event_tickers,))
     counts["event"] = cur.fetchone()[0]
     cur.execute("SELECT count(*) FROM market WHERE ticker = ANY(%s)", (market_tickers,))
@@ -170,10 +174,10 @@ for m in markets:
     day = datetime.strptime(et.split("-", 1)[1], "%y%b%d").date()
     exp_events[et] = ("KXHIGHNY", "NYC_HIGH", day, "The Weather Company")
 report("EXTRA event rows (date, series, underlying, source)", db_events == exp_events, str(db_events))
-cur.execute("SELECT underlying_id, description FROM underlying")
+cur.execute("SELECT underlying_id, description FROM underlying WHERE underlying_id = 'NYC_HIGH'")
 u = cur.fetchall()
 report("EXTRA underlying row", u == [("NYC_HIGH", "Daily maximum temperature, New York Central Park (KNYC)")], str(u))
-cur.execute("SELECT ticker, underlying_id, title FROM series")
+cur.execute("SELECT ticker, underlying_id, title FROM series WHERE ticker = 'KXHIGHNY'")
 s = cur.fetchall()
 report("EXTRA series row", s == [("KXHIGHNY", "NYC_HIGH", "Highest temperature in NYC")], str(s))
 

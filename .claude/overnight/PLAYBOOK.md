@@ -36,7 +36,7 @@ run ListAgents, find the chat by its reference, and use the name shown there.
 | B | `engine/`, `recon/`, `strategies/`, `backtest/`, `tests/engine/`, `tests/recon/`, `tests/backtest/`, `db/connect.py` |
 | C | `db/portfolio.sql`, `portfolio/`, `ui/`, `tests/db/check_portfolio.py`, `tests/portfolio/`, `tests/ui/` |
 | shared — message Track A first | `pyproject.toml` / `uv.lock` (one dependency change at a time) |
-| nobody overnight | `.claude/CLAUDE.md`, `main`, `legacy/`, `design/` (read-only, read it at `/home/kondr/KalBacktester/design/`) |
+| nobody overnight | `.claude/CLAUDE.md`, `main`, `legacy/`, the design-system files in `/home/kondr/KalBacktester/.claude/agents/` (read-only; the user moved them there from `design/` on 2026-11-24 so they work as the `veklich-design` agent) |
 
 Schema changes come only from Track A, as migrations; B and C send `NEED schema: …`.
 Each unit has a spec at `.claude/specs/<A|B|C>NN-name.md` in the owning track's branch.
@@ -141,12 +141,18 @@ Each step is one command, runnable alone, reading only the database.
 - **C03 integration**: portfolio reads only the database and A021's queries; check that portfolio
   positions equal the engine's `position_snapshot` and that `fee_check` is empty on B014/B017
   runs (cross-checked with B013).
-- **C04 UI brief**: one page following `/home/kondr/KalBacktester/design/` (BO4 Daylight /
+- **C04 UI brief**: one page following the design system in `/home/kondr/KalBacktester/.claude/agents/` (`veklich-design.md`, BO4 Daylight /
   Graphite, Operate mode; `veklich-design.md` + `daylight-graphite.md` + `BO4_DESIGN_SYSTEM.md`).
   Screens: city/day market view, weather against market, data coverage, runs and journal,
   portfolio. Stack: small Python server + HTMX, read-only database; any new dependency via
   Track A. Send the brief to A and B as INFO.
 - **C05+ UI build**: Track C owns `ui/`; A and B contribute screens through C's specs.
+
+## 7a. HOLD (2026-11-24) — decided: one run per batch, new days only (user, in Track B's chat; unit B019)
+The hold stays until B019 is merged; afterwards each batch is: backup, run_all, reconcile.
+No `backtest.run_all` live runs after new data batches until the user decides between one run per
+batch (new days only) and one growing run per city: run_all's duplicate guard matches only the exact
+date range, so a rerun after more days load would write a new permanent run repeating run 32's days.
 
 ## 8. Morning
 Each track writes a final summary at the end of its progress file. Track A writes the overall
@@ -170,7 +176,8 @@ coverage table, what the user can try.
 - **When a spec is wrong:** correct it, add a "Spec correction" section saying why, and send it
   back.
 - **Agents:** call them with the Agent tool, `subagent_type` = `implementer`, `qa-tester`,
-  `reviewer`, or (for research) `kalshi-probe` / `weather-probe`. Always pass `effort: "medium"`.
+  `reviewer`, or (for research) `kalshi-probe` / `weather-probe`. Always pass **both** `model: "sonnet"` and `effort: "medium"`
+  (user rule 2026-11-24: workers are never Opus; the chats themselves are the only Opus).
   They run in the background, and you are notified when one finishes; never poll its output.
   Workers never commit or push.
 - **Messages:** run `ListAgents`, find the other chat by its reference, then use
