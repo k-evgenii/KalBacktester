@@ -139,3 +139,15 @@ look). Then split into small units: metrics SQL/Python → strategy port → sav
   `/home/kondr/.claude/plans/can-we-test-the-lazy-dusk-of-b4d8bdb5-4be3-489e-aada-3cb6ec7bd71b.md`, step 1.
 - Progress logs: `.claude/overnight/reports/track-{a,b,c}.md` (local only). Unit status:
   `.claude/specs/STATUS.md`.
+
+## 8. Progress after this handoff (2026-11-24 evening, lead chat)
+Done, each with spec, QA PASS, reviewer APPROVE, tag `night/<unit>`: A026 (two tests scoped), C11
+`portfolio/marks.py` (hourly mark-to-market equity), C12 `portfolio/metrics.py` (trades, daily P&L,
+Sharpe √365, drawdown, VaR 95/99, bracket worst-case loss per event, exposure), B021
+`strategies/midday_fade.py` + `run_all --strategy`, B022 `backtest/run_portfolio.py` (one run across all
+cities), C13 `/runs/<id>/analytics`, C14 `/runs/<id>/events/<event>` (fills on the price chart).
+Saved demo runs: **69** midday_fade (6 cities, P&L −67.57) and **70** forecast_favourite (−126.86), both
+recon PASS and portfolio check PASS; backup `backups/db/20261124T163736Z_before-demo-runs.dump`.
+Full suite: 37/37 green. Lint: `uvx ruff check` (ruff is not in the venv).
+Open: evening backfill cron (A027); C14 follow-up guard (event with orders, no fills, no quotes);
+run comparison / parameter sweeps not built.
