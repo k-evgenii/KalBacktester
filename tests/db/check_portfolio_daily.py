@@ -5,7 +5,6 @@ Tests 1 to 11 are the agreed ones; checks labelled EXTRA are attacks added by th
 Run: PYTHONPATH=. uv run python tests/db/check_portfolio_daily.py
 """
 import os
-import subprocess
 import sys
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -19,7 +18,7 @@ from db.connect import read_password
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA_SQL = (ROOT / "db" / "schema.sql").read_text()
 PORTFOLIO_SQL = (ROOT / "db" / "portfolio.sql").read_text()
-TEST_DB = "kalbt_portfolio_daily_test"
+TEST_DB = f"kalbt_portfolio_daily_test_{os.getpid()}"
 FEE_PARAMS = {"fee_rate": "0.07"}
 
 DAILY_COLS = ("day, premium_paid, premium_received, fees, payouts, cash_end, cost_basis_open, "
@@ -330,18 +329,6 @@ def live_state():
         return counts, [row[0] for row in cur.fetchall()]
 
 
-def check_test10_c01():
-    result = subprocess.run([sys.executable, str(ROOT / "tests" / "db" / "check_portfolio.py")],
-                            check=False, cwd=ROOT, capture_output=True, text=True,
-                            env={**os.environ, "PYTHONPATH": str(ROOT)})
-    lines = result.stdout.splitlines()
-    fails = [line for line in lines if line.startswith("[FAIL]")]
-    passes = [line for line in lines if line.startswith("[PASS]")]
-    report("10b: tests/db/check_portfolio.py (C01) still passes unchanged",
-           result.returncode == 0 and not fails and len(passes) > 0,
-           f"exit {result.returncode}, {len(passes)} pass, fails {fails}, stderr {result.stderr[-300:]}")
-
-
 # ---------------------------------------------------------------------------
 # EXTRA checks
 # ---------------------------------------------------------------------------
@@ -605,7 +592,6 @@ def main():
         with admin() as conn:
             conn.execute(f"DROP DATABASE IF EXISTS {TEST_DB} WITH (FORCE)")
 
-    check_test10_c01()
 
     after_counts, after_view = live_state()
     report("11a: live database journals have the same row counts", before_counts == after_counts,

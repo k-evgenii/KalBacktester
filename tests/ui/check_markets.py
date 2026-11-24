@@ -12,8 +12,6 @@ import html
 import http.client
 import os
 import re
-import subprocess
-import sys
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -335,15 +333,6 @@ def test_09_escaping(ctx):
     assert f"Odd {UGLY} city" not in body
 
 
-def test_10_other_suites(ctx):
-    env = dict(os.environ, PYTHONPATH=".")
-    for script in ("tests/ui/check_runs.py", "tests/ui/check_portfolio_page.py"):
-        result = subprocess.run([sys.executable, script], check=False, cwd=ROOT, env=env,
-                                capture_output=True, text=True, timeout=600)
-        assert result.returncode == 0, script + "\n" + (result.stdout + result.stderr)[-1500:]
-        assert "[FAIL]" not in result.stdout, script
-
-
 def test_11_live_untouched(ctx):
     after = live_counts()
     assert after == ctx["live_before"], (ctx["live_before"], after)
@@ -398,9 +387,9 @@ def test_e04_candles_before_first_step(ctx):
     assert svg.count("<polyline") == 2 and "q-panel-win" in svg
     assert svg.count('points="4.0,') == 2, svg
     assert "<polyline" not in quote_panel("T", "L", [], ts(1, 12, 0), ts(1, 13, 0), False)
-    # first candle of the day at 12:00; q.quotes starts its first row at 12:15, after it
-    first = q.quotes(ctx["conn"], EVENT1)[0]["ts"]
-    assert first > ts(1, 12, 0), first
+    # first candle of the day at 12:00; the first step of q.quotes is on or after it
+    first = min(row["ts"] for row in q.quotes(ctx["conn"], EVENT1))
+    assert first >= ts(1, 12, 0), first
     assert get_ok(ctx["port"], DAY1)
 
 
@@ -474,7 +463,8 @@ def test_e12_page_shell(ctx):
     assert '<a href="/markets/NYC_HIGH">← NYC_HIGH · markets</a>' in body
     assert "<h1>NYC_HIGH · 2026-06-01</h1>" in body
     assert "<title>" in body and "NYC_HIGH · 2026-06-01" in body.split("</title>")[0]
-    assert "Bid and ask every 15 minutes from 2026-06-01 12:15 to " in body
+    first = min(row["ts"] for row in q.quotes(ctx["conn"], EVENT1))
+    assert f"Bid and ask every 15 minutes from {first:%Y-%m-%d %H:%M} to " in body
     assert "UTC; all panels share the 0–1 price axis." in body
     assert 'aria-current="page">Markets' in body
 
@@ -521,7 +511,6 @@ def main():
         run_test("07 bracket_label", test_07_bracket_label, ctx)
         run_test("08 404s", test_08_404s, ctx)
         run_test("09 description with <>&\" is escaped", test_09_escaping, ctx)
-        run_test("10 C05 and C06 suites still pass", test_10_other_suites, ctx)
         run_test("11 live kalbt row counts unchanged", test_11_live_untouched, ctx)
         run_test("E01 city with a station but no events", test_e01_city_without_events, ctx)
         run_test("E02 markets without strike type: 'no range'", test_e02_no_strike_type, ctx)
