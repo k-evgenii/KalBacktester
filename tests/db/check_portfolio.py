@@ -265,15 +265,16 @@ def check_test14(cur, run6):
 
 
 def live_state():
-    """Row counts of the journals in the live database, and whether portfolio_ledger exists."""
+    """Row counts of the journals in the live database, and the names of its portfolio views."""
     with admin() as conn:
         cur = conn.cursor()
         counts = []
         for table in ("run", "order_intent", "order_outcome", "settlement"):
             cur.execute(f"SELECT count(*) FROM {table}")
             counts.append(cur.fetchone()[0])
-        cur.execute("SELECT count(*) FROM pg_views WHERE viewname = 'portfolio_ledger'")
-        return counts, cur.fetchone()[0]
+        cur.execute("SELECT viewname FROM pg_views WHERE schemaname = 'public' "
+                    "AND (viewname LIKE 'portfolio%' OR viewname = 'fee_check') ORDER BY viewname")
+        return counts, [row[0] for row in cur.fetchall()]
 
 
 # ---------------------------------------------------------------------------
@@ -611,8 +612,8 @@ def main():
     after_counts, after_view = live_state()
     report("12a: live database journals have the same row counts", before_counts == after_counts,
            f"before {before_counts} after {after_counts}")
-    report("12b: live database has no portfolio_ledger view created by the script",
-           before_view == after_view == 0, f"before {before_view} after {after_view}")
+    report("12b: live portfolio views unchanged by the script",
+           before_view == after_view, f"before {before_view} after {after_view}")
 
     print(f"{len(failures)} failure(s)")
     sys.exit(1 if failures else 0)
