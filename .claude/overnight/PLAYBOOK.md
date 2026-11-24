@@ -154,8 +154,8 @@ Each step is one command, runnable alone, reading only the database.
 - A run writes, is reconciled on the same connection, then is rolled back, unless `run_all --save`.
   A saved run is a log for later analysis: it may be deleted, never edited.
 - Market and weather data stay fully immutable.
-- The earlier "one run per batch" decision and its hold are replaced. The hold ends when B019 is
-  merged; a default run writes nothing, so no backup is needed per batch (still take one before a
+- The earlier "one run per batch" decision and its hold are replaced. **B019 is merged (2d85a4f): the hold
+  has ended**; a default run writes nothing, so no backup is needed per batch (still take one before a
   `--save` run).
 - Deleting saved runs needs a migration from Track A (Track B's NEED, after B019). Track A
   confirms it with the user before applying it, because it relaxes a database protection.
