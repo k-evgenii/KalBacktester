@@ -58,7 +58,7 @@ def climate_day_window(day, tz_name):
 
 
 def fetch(url):
-    """GET a URL and return the body text. Retry on 429 / 5xx, at most 3 times."""
+    """GET a URL and return the body text. Retry on 429 / 5xx and on network errors, at most 3 times."""
     global request_count
     retries = 0
     while True:
@@ -74,6 +74,13 @@ def fetch(url):
             if (error.code == 429 or error.code >= 500) and retries < 3:
                 retries += 1
                 print(f"HTTP {error.code}, waiting 10 s (retry {retries})")
+                time.sleep(10)
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError) as error:   # after the HTTPError clause (HTTPError is a URLError)
+            if retries < 3:
+                retries += 1
+                print(f"network error {error}, waiting 10 s (retry {retries})")
                 time.sleep(10)
                 continue
             raise
