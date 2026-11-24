@@ -416,6 +416,7 @@ def test_e09_intent_without_outcome(ctx):
 def test_e10_failing_checks(ctx):
     conn = ctx["conn"]
     run_id = clean_run(conn)
+    conn.commit()
     tamper(conn, "position_snapshot",
            "UPDATE position_snapshot SET net_units = net_units + 1"
            " WHERE run_id = %s AND market_ticker = 'T-M2'", (run_id,))
@@ -538,7 +539,9 @@ def main():
         ctx = {"conn": conn, "port": port, "server": server, "bare_port": bare_port,
                "bare_empty_body": bare_empty_body, "live_before": live_before}
         ctx["clean"] = clean_run(conn)
+        conn.commit()
         ctx["bare_clean"] = clean_run(bare_conn)
+        bare_conn.commit()
 
         run_test("01 GET / redirects to /runs", test_01_root_redirect, ctx)
         run_test("02 /runs lists the clean run with counts", test_02_runs_list, ctx)
