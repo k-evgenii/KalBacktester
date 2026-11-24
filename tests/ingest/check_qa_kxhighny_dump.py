@@ -15,8 +15,8 @@ from ingest.qa_kxhighny_dump import check_14, run_checks
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 DUMP = Path("/home/kondr/KalBacktester/api_probe/kalshi/KXHIGHNY")
-JUNE_DUMP = ROOT / "api_probe" / "kalshi" / "KXHIGHNY_2026-06-01_2026-06-07"
-AUGUST_DUMP = ROOT / "api_probe" / "kalshi" / "KXHIGHNY_2026-08-12_2026-08-18"
+JUNE_DUMP = Path("/home/kondr/KalBacktester/api_probe/kalshi/KXHIGHNY_2026-06-01_2026-06-07")
+AUGUST_DUMP = Path("/home/kondr/KalBacktester/api_probe/kalshi/KXHIGHNY_2026-08-12_2026-08-18")
 TABLES = ["underlying", "series", "event", "market", "candle",
           "run", "order_intent", "order_outcome", "settlement", "position_snapshot"]
 

@@ -36,6 +36,7 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | B012 | B | matching engine (`engine/match_intents.py`) | track-b | done, bb11d9f (merged into dev) |
 | B013 | B | run reconciliation (`recon/check_run.py`) | track-b | done, a3eb737 (merged into dev) |
 | C01 | C | portfolio ledger core (`db/portfolio.sql`) | track-c | done, 1d4dec4 (not yet in dev) |
+| A018 | A | migrations (`db/migrate.py`) and backups (`db/backup.py`) | dev | done (see git log) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |

@@ -55,6 +55,11 @@ Each unit has a spec at `.claude/specs/<A|B|C>NN-name.md` in the owning track's 
   (git-ignored, last 10 kept) before every migration, before each city batch of the backfill,
   and before the first live engine run. Until A018 exists, take it by hand:
   `docker exec kalbt-recon-db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB"' > /home/kondr/KalBacktester/backups/db/<UTC>_<reason>.dump`
+- **Pinned backups**: `/home/kondr/KalBacktester/backups/pinned/` is never rotated. Copy a dump there
+  when it marks a point worth keeping all night (night start, before a first live write). Holds
+  `20261124T011519Z_night-start.dump`.
+- **Tools** (A018, on `dev`): `uv run python -m db.backup dump --reason <why>` and
+  `uv run python -m db.backup restore <file> --dbname <throwaway>` (refuses `kalbt`).
 - **Migrations** (A018): `db/migrations/NNNN_name.sql` applied by `db/migrate.py` (backup first,
   one transaction per file, recorded in `schema_migration`); the same SQL lands in
   `db/schema.sql`. Only Track A applies migrations.

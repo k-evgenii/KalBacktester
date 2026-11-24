@@ -139,6 +139,23 @@ Unit 011 adds two read-only views at the end of `schema.sql`. They store nothing
 
 **The YES rule.** `expected_result` is `yes` when `settled_high_f` is inside the bracket (at or above `temp_lo` and at or below `temp_hi`, ignoring a null bound), otherwise `no`. It is null when `settled_high_f` or `category` is null. `settled_high_f` is the `official_daily.high_f` with `source = 'kalshi'` for the event's station and day.
 
+## Migrations and backups
+
+Schema changes after the baseline are numbered files in `db/migrations/` (`NNNN_name.sql`).
+`python -m db.migrate [--dbname kalbt]` applies the ones not yet recorded in `schema_migration`,
+each in its own transaction, and on `kalbt` takes a backup first. A recorded file must never be
+edited (its checksum is checked); write a new migration instead. The same SQL also goes into
+`db/schema.sql`, so a fresh build already contains every migration.
+
+Backups are `pg_dump -Fc` files in `backups/db/` (git-ignored, newest 10 kept):
+
+```bash
+uv run python -m db.backup dump --reason before-something
+uv run python -m db.backup restore backups/db/<file>.dump --dbname kalbt_restore_test
+```
+
+Restore refuses the live database name `kalbt`; it drops and recreates the target database.
+
 ## Usage
 
 Run these from the repo root. The worktree has no `.env`, so the password (`POSTGRES_PASSWORD`, required by the compose file) comes from the main checkout's `.env`.

@@ -601,3 +601,14 @@ COMMENT ON COLUMN station.rules_names IS
     'Phrases that identify this station in Kalshi rules text, e.g. (CLINYC), Central Park, New York. '
     'A market''s rules_primary must contain at least one of them (case-sensitive). '
     'Filled by hand from the rules-wording survey.';
+
+-- ---------------------------------------------------------------------------
+-- Applied migrations (unit A018). A fresh build from this file already contains every
+-- migration listed here; db/migrate.py applies the rest to an existing database.
+-- ---------------------------------------------------------------------------
+CREATE TABLE schema_migration (
+    id         text        PRIMARY KEY,          -- file name without .sql, e.g. 0001_baseline
+    checksum   text        NOT NULL,             -- sha256 of the file's bytes
+    applied_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO schema_migration (id, checksum) VALUES ('0001_baseline', '36178b0154f43e4e1337a2a3cd59cd98f338f37afbd8d2aee44d3de1d48b8ddf');
