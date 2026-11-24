@@ -150,11 +150,15 @@ Each step is one command, runnable alone, reading only the database.
   Track A. Send the brief to A and B as INFO.
 - **C05+ UI build**: Track C owns `ui/`; A and B contribute screens through C's specs.
 
-## 7a. HOLD (2026-11-24) — decided: one run per batch, new days only (user, in Track B's chat; unit B019)
-The hold stays until B019 is merged; afterwards each batch is: backup, run_all, reconcile.
-No `backtest.run_all` live runs after new data batches until the user decides between one run per
-batch (new days only) and one growing run per city: run_all's duplicate guard matches only the exact
-date range, so a rerun after more days load would write a new permanent run repeating run 32's days.
+## 7a. Backtest runs are throwaway by default (user, in Track B's chat, 2026-11-24; unit B019)
+- A run writes, is reconciled on the same connection, then is rolled back, unless `run_all --save`.
+  A saved run is a log for later analysis: it may be deleted, never edited.
+- Market and weather data stay fully immutable.
+- The earlier "one run per batch" decision and its hold are replaced. The hold ends when B019 is
+  merged; a default run writes nothing, so no backup is needed per batch (still take one before a
+  `--save` run).
+- Deleting saved runs needs a migration from Track A (Track B's NEED, after B019). Track A
+  confirms it with the user before applying it, because it relaxes a database protection.
 
 ## 8. Morning
 Each track writes a final summary at the end of its progress file. Track A writes the overall
