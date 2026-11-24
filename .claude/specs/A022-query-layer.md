@@ -1,26 +1,111 @@
-# A022 — Query layer for the portfolio and the UI (DRAFT: field contract from Track C)
+# A022 — Read-only query layer for the UI (market and weather screens)
 
-Track: A. Status: DRAFT — the full spec is written when A022 starts. This file records the field
-contract Track C sent on 2026-11-24 so it is not lost. Every function returns a list of dicts;
-times are UTC `timestamptz`; money and prices are `Decimal`. Read-only.
+Track: A. Status: APPROVED (overnight plan PLAYBOOK §7; field contract from Track C, 2026-11-24).
+Screen 5 (coverage) is A023.
 
-## Screen 3 — city / day market
-- `cities()` → underlying_id, description, station_id, series_ticker
-- `event_days(underlying_id)` → event_date, event_ticker, n_markets, settled (bool)
-- `ladder(event_ticker)` → market_ticker, ladder_pos, temp_lo, temp_hi, category, result, settled_high_f
-  (from Track B's `market_bracket` / `event_outcome` views)
-- `quotes(event_ticker, step_minutes=15)` → market_ticker, ts, yes_bid, yes_ask, volume — one row per
-  market per step: bid and ask of the last candle at or before `ts` (whole bar carried forward, never
-  bid and ask filled separately); volume = sum over the step
+## Goal
+Small read-only functions that return plain rows (list of dicts) for Track C's screens 3 (city/day
+market) and 4 (weather against market), with exactly the fields Track C asked for. They read only
+the database; times come back as UTC `timestamptz`, prices and money as `Decimal`.
 
-## Screen 4 — weather against market (one event: its station, its climate day in local standard time)
-- `observations(event_ticker)` → observed_at, temp_f
-- `forecasts(event_ticker, lead_day=None)` → model, valid_time, lead_day, temp_f (None = all leads)
-- `official(event_ticker)` → source, high_f, high_time_lst, low_f, issued_at
+## Not built
+- No caching, no classes, no ORM, no writes, no new dependency.
+- No coverage (A023), no portfolio queries (Track C owns those views).
 
-## Screen 5 — coverage (A023)
-- `coverage()` → underlying_id, week_start (Monday), events, markets, bars, nws_highs, kalshi_highs,
-  gate_warnings, numeric_mismatches, status ('OK' | 'Check' | 'RED')
-  (gate warnings and numeric mismatches come from the backfill runner's records, A021)
+## Files
+- `query/__init__.py` (empty), `query/market.py`, `query/weather.py`
+- `tests/query/__init__.py`, `tests/query/check_queries.py` (qa-tester)
 
-When done: send Track C an INFO with the final module and function names.
+## Interfaces
+Every function takes an open psycopg connection first and uses `cursor(row_factory=dict_row)`.
+`query/market.py`:
+- `cities(conn)` → underlying_id, description, station_id, series_ticker
+- `event_days(conn, underlying_id)` → event_date, event_ticker, n_markets, settled
+- `ladder(conn, event_ticker)` → market_ticker, ladder_pos, temp_lo, temp_hi, category, result, settled_high_f
+- `quotes(conn, event_ticker, step_minutes=15)` → market_ticker, ts, yes_bid, yes_ask, volume
+`query/weather.py`:
+- `observations(conn, event_ticker)` → observed_at, temp_f
+- `forecasts(conn, event_ticker, lead_day=None)` → model, valid_time, lead_day, temp_f
+- `official(conn, event_ticker)` → source, high_f, high_time_lst, low_f, issued_at
+
+## Hard parts (use as written)
+```sql
+-- cities
+SELECT u.underlying_id, u.description, u.station_id, s.ticker AS series_ticker
+FROM underlying u JOIN series s USING (underlying_id)
+WHERE u.station_id IS NOT NULL ORDER BY s.ticker;
+
+-- event_days
+SELECT e.event_date, e.ticker AS event_ticker, count(m.ticker) AS n_markets,
+       bool_and(m.result IS NOT NULL) AS settled
+FROM event e JOIN market m ON m.event_ticker = e.ticker
+WHERE e.underlying_id = %(u)s GROUP BY e.event_date, e.ticker ORDER BY e.event_date;
+
+-- ladder
+SELECT market_ticker, ladder_pos, temp_lo, temp_hi, category, result, settled_high_f
+FROM event_outcome WHERE event_ticker = %(e)s ORDER BY ladder_pos;
+
+-- quotes: one row per market per step; bid AND ask from the SAME candle, the last one at or before ts
+-- (never filled separately); volume = sum over (ts - step, ts]; NULL bid/ask = no quote
+WITH m AS (SELECT ticker FROM market WHERE event_ticker = %(e)s),
+     span AS (SELECT min(c.ts) AS t0, max(c.ts) AS t1 FROM candle c JOIN m ON c.market_ticker = m.ticker),
+     steps AS (SELECT generate_series(
+                 date_bin(make_interval(mins => %(s)s), span.t0, TIMESTAMPTZ '2000-01-01 00:00+00')
+                   + make_interval(mins => %(s)s),
+                 span.t1 + make_interval(mins => %(s)s),
+                 make_interval(mins => %(s)s)) AS ts FROM span)
+SELECT m.ticker AS market_ticker, st.ts, last.yes_bid, last.yes_ask,
+       (SELECT coalesce(sum(c.volume), 0) FROM candle c
+         WHERE c.market_ticker = m.ticker AND c.ts > st.ts - make_interval(mins => %(s)s)
+           AND c.ts <= st.ts) AS volume
+FROM m CROSS JOIN steps st
+LEFT JOIN LATERAL (SELECT c.yes_bid, c.yes_ask FROM candle c
+                   WHERE c.market_ticker = m.ticker AND c.ts <= st.ts
+                   ORDER BY c.ts DESC LIMIT 1) last ON true
+ORDER BY m.ticker, st.ts;
+```
+Weather, for an event: its station via event → underlying → station, and its climate day (local
+**standard** time) as a UTC window:
+```sql
+WITH ev AS (
+  SELECT st.station_id, e.event_date,
+         (e.event_date::timestamp - make_interval(hours => st.std_utc_offset_h)) AT TIME ZONE 'UTC' AS w0
+  FROM event e JOIN underlying u ON u.underlying_id = e.underlying_id
+  JOIN station st ON st.station_id = u.station_id WHERE e.ticker = %(e)s)
+-- observations
+SELECT o.observed_at, o.temp_f FROM observation_hourly o, ev
+WHERE o.station_id = ev.station_id AND o.observed_at >= ev.w0 AND o.observed_at < ev.w0 + interval '24 hours'
+ORDER BY o.observed_at;
+-- forecasts (temp_f IS NOT NULL only)
+SELECT f.model, f.valid_time, f.lead_day, f.temp_f FROM forecast_hourly f, ev
+WHERE f.station_id = ev.station_id AND f.valid_time >= ev.w0 AND f.valid_time < ev.w0 + interval '24 hours'
+  AND f.temp_f IS NOT NULL AND (%(lead)s::int IS NULL OR f.lead_day = %(lead)s::int)
+ORDER BY f.model, f.lead_day, f.valid_time;
+-- official
+SELECT d.source, d.high_f, d.high_time_lst, d.low_f, d.issued_at FROM official_daily d, ev
+WHERE d.station_id = ev.station_id AND d.climate_date = ev.event_date ORDER BY d.source;
+```
+(For New York, std offset −5: climate day 2026-11-22 = 05:00 UTC 22 Nov to 05:00 UTC 23 Nov.)
+
+## Agreed tests (`tests/query/check_queries.py`, read-only on live)
+A backfill is adding data while these run, so every test uses fixed events, never whole-table counts.
+1. `cities` includes KXHIGHNY → NYC_HIGH / KNYC and KXHIGHCHI → MDW_HIGH / KMDW; every row has a station.
+2. `event_days(NYC_HIGH)` contains 2026-11-16 … 2026-11-22 with 6 markets each and `settled` true.
+3. `ladder('KXHIGHNY-26NOV22')`: 6 rows ordered 1..6; exactly one `result = 'yes'`, and its bracket holds
+   `settled_high_f` (61).
+4. `quotes('KXHIGHNY-26NOV22', 15)`: recompute from raw `candle` rows in Python — for every row, bid and
+   ask equal those of the last candle at or before `ts` (same candle), volume equals the sum over
+   (ts − 15 min, ts]; steps are 15 minutes apart, aligned to :00/:15/:30/:45; 6 markets.
+5. `observations('KXHIGHNY-26NOV22')`: every `observed_at` is in [05:00 UTC 22 Nov, 05:00 UTC 23 Nov); at least
+   24 rows; the maximum `temp_f` is within 2 °F of the official high.
+6. `forecasts('KXHIGHNY-26NOV22')` returns several models and leads; `lead_day=1` returns only lead 1; all
+   `valid_time` in the same window; no NULL `temp_f`.
+7. `official('KXHIGHNY-26NOV22')`: two rows, `kalshi` and `nws_cli`, both high 61.
+8. Chicago (`KXHIGHCHI-26NOV22`, std offset −6): the window is 06:00 UTC 22 Nov to 06:00 UTC 23 Nov.
+9. The functions never write: the transaction status after each call is idle with no changes
+   (call them inside a transaction and roll back; row counts of the trading tables unchanged).
+
+## Done when
+- `uv run python -m tests.query.check_queries` exits 0.
+
+If anything here is unclear or looks wrong: stop and report, do not guess.

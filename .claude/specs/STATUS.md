@@ -43,6 +43,7 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | A020 | A | market dump, gate and loader for any series; Chicago 16-22 Nov; weather gate hooked into the loader | dev | done (see git log) |
 | A021 | A | resumable backfill runner (`ingest/backfill.py`) | dev | done, full run pending |
 | A024 | A | migration 0004: saved backtest runs deletable, never updated | dev | done (see git log) |
+| A022 | A | read-only query layer for UI screens 3-4 (`query/`) | dev | done (see git log) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |
