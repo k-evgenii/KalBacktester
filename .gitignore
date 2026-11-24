@@ -59,3 +59,6 @@ api_probe/weather/dump*/
 # overnight progress files and database backups (local only)
 .claude/overnight/reports/
 backups/
+
+# generated backtest reports (Track B)
+backtest/reports/
