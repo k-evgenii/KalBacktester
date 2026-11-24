@@ -163,12 +163,13 @@ def recon_section(conn, run_id):
 
 
 def portfolio_section(conn, run_id):
+    heading = f'<h2>Portfolio check <a href="/runs/{run_id}/portfolio">Day by day →</a></h2>'
     try:
         results = portfolio.check_run.check_run(conn, run_id)
     except RuntimeError:
         conn.rollback()
         return (
-            '<section class="panel"><h2>Portfolio check</h2>'
+            f'<section class="panel">{heading}'
             f'<p>Portfolio views are not applied to this database yet. {chip("Not available", "mute")}</p>'
             "</section>"
         )
@@ -180,7 +181,7 @@ def portfolio_section(conn, run_id):
         status = chip("OK", "ok") if ok else chip(f"Fail · {len(failing_rows)} rows", "red")
         rows.append(f"<tr>{td(esc(name), 'mono')}{td(status)}</tr>")
     head = [("Check", False), ("Status", False)]
-    return f'<section class="panel"><h2>Portfolio check</h2>{table(head, rows)}</section>'
+    return f'<section class="panel">{heading}{table(head, rows)}</section>'
 
 
 def error_section(title, error):
