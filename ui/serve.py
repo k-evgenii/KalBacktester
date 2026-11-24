@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from db.connect import connect
-from ui import coverage, markets, portfolio, runs, weather
+from ui import analytics, coverage, markets, portfolio, runs, weather
 from ui.layout import esc, page
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -75,11 +75,12 @@ def make_server(port, dbname):
         def send_db_page(self, path):
             run_match = re.fullmatch(r"/runs/(\d{1,18})", path)
             portfolio_match = re.fullmatch(r"/runs/(\d{1,18})/portfolio", path)
+            analytics_match = re.fullmatch(r"/runs/(\d{1,18})/analytics", path)
             city_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})", path)
             day_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})/(\d{4}-\d{2}-\d{2})", path)
             weather_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})/(\d{4}-\d{2}-\d{2})/weather", path)
             if (path not in ("/runs", "/markets", "/coverage") and not run_match and not portfolio_match
-                    and not city_match and not day_match and not weather_match):
+                    and not analytics_match and not city_match and not day_match and not weather_match):
                 self.send_html(404, not_found_page())
                 return
             event_date = None
@@ -104,6 +105,8 @@ def make_server(port, dbname):
                     text = markets.cities_page(conn)
                 elif portfolio_match:
                     text = portfolio.portfolio_page(conn, int(portfolio_match.group(1)))
+                elif analytics_match:
+                    text = analytics.analytics_page(conn, int(analytics_match.group(1)))
                 elif run_match:
                     text = runs.run_page(conn, int(run_match.group(1)))
                 else:

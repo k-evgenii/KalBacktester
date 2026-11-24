@@ -49,6 +49,7 @@ Edited by the lead chat only. States: `spec` (being written) → `approved` → 
 | A026 | A | two ingest checks scoped to their own rows after the backfill (tests only) | dev | done (see git log) |
 | C11 | C | hourly mark-to-market equity curve of a run (`portfolio/marks.py`) | dev | done (see git log) |
 | C12 | C | run metrics: trades, daily P&L, Sharpe, drawdown, VaR, event risk (`portfolio/metrics.py`) | dev | done (see git log) |
+| C13 | C | UI: analytics page of one run (`/runs/<id>/analytics`) | dev | done (see git log) |
 | | A ingestion | `ingest_kalshi.py` | | not started |
 | | A ingestion | `ingest_forecasts.py` | | not started |
 | | A ingestion | `ingest_settlement.py` | | not started |

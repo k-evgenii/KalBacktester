@@ -123,3 +123,10 @@ td.hit { font-weight: 700; }
 .cov-grid td { text-align: center; padding: 4px; }
 .cov-grid a { text-decoration: none; }
 .cov-grid .chip { font-size: 11px; }
+
+/* C13 analytics */
+.chart-wide { max-width: 960px; }
+.chart-base { stroke: var(--divider); stroke-width: 1; stroke-dasharray: 4 4; }
+.bar-pos { fill: var(--ok-dot); }
+.bar-neg { fill: var(--red-dot); }
+.bar-zero { fill: var(--divider); }

@@ -152,7 +152,7 @@ def recon_section(conn, run_id):
 
 
 def portfolio_section(conn, run_id):
-    heading = f'<h2>Portfolio check <a href="/runs/{run_id}/portfolio">Day by day →</a></h2>'
+    heading = f'<h2>Portfolio check <a href="/runs/{run_id}/portfolio">Day by day →</a> <a href="/runs/{run_id}/analytics">Analytics →</a></h2>'
     try:
         results = portfolio.check_run.check_run(conn, run_id)
     except RuntimeError:
