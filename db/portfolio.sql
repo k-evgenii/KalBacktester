@@ -3,6 +3,8 @@
 -- Positions are signed in YES units: positive = long YES, negative = long NO.
 -- Everything here is a function or a view over the journals; no tables.
 
+DROP VIEW IF EXISTS portfolio_settlement_check;
+DROP VIEW IF EXISTS portfolio_snapshot_check;
 DROP VIEW IF EXISTS portfolio_daily_underlying;
 DROP VIEW IF EXISTS portfolio_daily;
 DROP VIEW IF EXISTS portfolio_position_daily;
@@ -142,17 +144,31 @@ COMMENT ON COLUMN fee_check.expected_fee IS 'kalshi_fee for the fill with the ru
 -- Portfolio day by day (spec C02)
 -- ---------------------------------------------------------------------------
 
--- One row per run and UTC day, from the first to the last day the run covers or has events on.
+-- One row per run and UTC day, from the first to the last day the run covers or has events on,
+-- or on which a position still open after its last event is still held (up to the market's close day).
 CREATE VIEW portfolio_calendar AS
+WITH last_state AS (
+    -- the last ledger row of each market of each run
+    SELECT DISTINCT ON (run_id, market_ticker) run_id, market_ticker, ts, net_after
+    FROM portfolio_ledger
+    ORDER BY run_id, market_ticker, ts DESC, kind DESC, seq DESC
+),
+bounds AS (
+    SELECT l.run_id,
+           min(l.ts)::date AS first_day,
+           max(l.ts)::date AS last_day,
+           (SELECT max(k.close_time)::date
+            FROM last_state s JOIN market k ON k.ticker = s.market_ticker
+            WHERE s.run_id = l.run_id AND s.net_after <> 0) AS last_open_close_day
+    FROM portfolio_ledger l
+    GROUP BY l.run_id
+)
 SELECT r.run_id, d::date AS day
 FROM run r
-LEFT JOIN (
-    SELECT run_id, min(ts)::date AS first_day, max(ts)::date AS last_day
-    FROM portfolio_ledger GROUP BY run_id
-) l ON l.run_id = r.run_id
+LEFT JOIN bounds b ON b.run_id = r.run_id
 CROSS JOIN LATERAL generate_series(
-    least(r.date_start, l.first_day)::timestamp,
-    greatest(r.date_end, l.last_day)::timestamp,
+    least(r.date_start, b.first_day)::timestamp,
+    greatest(r.date_end, b.last_day, b.last_open_close_day)::timestamp,
     interval '1 day'
 ) AS d;
 
@@ -233,7 +249,7 @@ GROUP BY c.run_id, c.day, u.underlying_id;
 -- Comments (C02)
 -- ---------------------------------------------------------------------------
 
-COMMENT ON VIEW portfolio_calendar IS 'One row per run and UTC day, from the earlier of the run''s date_start and its first event day to the later of its date_end and its last event day.';
+COMMENT ON VIEW portfolio_calendar IS 'One row per run and UTC day, from the earlier of the run''s date_start and its first event day to the latest of its date_end, its last event day and the close day of every market still held after the run''s last event in it.';
 COMMENT ON COLUMN portfolio_calendar.run_id IS 'The run.';
 COMMENT ON COLUMN portfolio_calendar.day IS 'The UTC day.';
 
@@ -279,3 +295,52 @@ COMMENT ON COLUMN portfolio_daily_underlying.realized_pnl_cum IS 'Realized P&L i
 COMMENT ON COLUMN portfolio_daily_underlying.fees_cum IS 'Fees in dollars in this underlying up to the end of the day.';
 COMMENT ON COLUMN portfolio_daily_underlying.net_pnl_cum IS 'realized_pnl_cum minus fees_cum.';
 COMMENT ON COLUMN portfolio_daily_underlying.open_markets IS 'Number of markets of this underlying with a non-zero position at the end of the day.';
+
+-- ---------------------------------------------------------------------------
+-- Checks of a run against the engine (spec C03)
+-- ---------------------------------------------------------------------------
+
+CREATE VIEW portfolio_snapshot_check AS
+SELECT coalesce(p.run_id, s.run_id)               AS run_id,
+       coalesce(p.day, s.as_of_date)              AS day,
+       coalesce(p.market_ticker, s.market_ticker) AS market_ticker,
+       p.net_units                                AS portfolio_net,
+       s.net_units                                AS engine_net,
+       p.cost_basis / abs(p.net_units)            AS portfolio_avg_cost,
+       s.avg_cost                                 AS engine_avg_cost
+FROM portfolio_position_daily p
+FULL JOIN position_snapshot s
+       ON s.run_id = p.run_id AND s.as_of_date = p.day AND s.market_ticker = p.market_ticker
+WHERE p.run_id IS NULL
+   OR s.run_id IS NULL
+   OR p.net_units <> s.net_units
+   OR abs(p.cost_basis / abs(p.net_units) - s.avg_cost) > 0.000001;
+
+CREATE VIEW portfolio_settlement_check AS
+SELECT run_id, market_ticker, ts AS settled_at,
+       -delta    AS settled_units,
+       net_after AS units_left,
+       cash_flow AS payout,
+       CASE WHEN yes_price = 1 THEN greatest(-delta, 0) ELSE greatest(delta, 0) END AS expected_payout
+FROM portfolio_ledger
+WHERE kind = 'settlement'
+  AND (net_after <> 0
+       OR cash_flow <> CASE WHEN yes_price = 1 THEN greatest(-delta, 0) ELSE greatest(delta, 0) END);
+
+COMMENT ON VIEW portfolio_snapshot_check IS 'Run, day and market where the portfolio''s end-of-day position and the engine''s position_snapshot disagree: a row on one side only, a different net_units, or an average cost differing by more than 0.000001. Empty means the engine''s snapshots equal the portfolio.';
+COMMENT ON COLUMN portfolio_snapshot_check.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_snapshot_check.day IS 'The UTC day (position_snapshot.as_of_date).';
+COMMENT ON COLUMN portfolio_snapshot_check.market_ticker IS 'The market.';
+COMMENT ON COLUMN portfolio_snapshot_check.portfolio_net IS 'Position per portfolio_position_daily, signed YES units; null when the portfolio has no open position that day.';
+COMMENT ON COLUMN portfolio_snapshot_check.engine_net IS 'net_units per position_snapshot; null when the engine wrote no snapshot.';
+COMMENT ON COLUMN portfolio_snapshot_check.portfolio_avg_cost IS 'Portfolio cost_basis / abs(net_units), unrounded; null when the portfolio has no open position.';
+COMMENT ON COLUMN portfolio_snapshot_check.engine_avg_cost IS 'avg_cost per position_snapshot; null when the engine wrote no snapshot.';
+
+COMMENT ON VIEW portfolio_settlement_check IS 'Settlements that leave units in the market or whose payout is not the units on the winning side. Empty means every settlement closes its position correctly.';
+COMMENT ON COLUMN portfolio_settlement_check.run_id IS 'The run.';
+COMMENT ON COLUMN portfolio_settlement_check.market_ticker IS 'The market.';
+COMMENT ON COLUMN portfolio_settlement_check.settled_at IS 'settlement.settled_at.';
+COMMENT ON COLUMN portfolio_settlement_check.settled_units IS 'Units the settlement closes, signed YES units (settlement.net_units).';
+COMMENT ON COLUMN portfolio_settlement_check.units_left IS 'Position in the market after the settlement; 0 when it closes correctly.';
+COMMENT ON COLUMN portfolio_settlement_check.payout IS 'Payout stored on the settlement, in dollars.';
+COMMENT ON COLUMN portfolio_settlement_check.expected_payout IS 'Units on the winning side, in dollars.';
