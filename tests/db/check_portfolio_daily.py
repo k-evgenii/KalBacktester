@@ -290,16 +290,25 @@ def check_test7(cur, run3):
 
 def check_test9(cur, run4):
     actual = read_underlying(cur, run4)
-    want = want_keyed([
+    # both positions stay open and their markets close on 06-30: days 06-04 to 06-30 repeat 06-03
+    want_rows = [
         (1, "CHI", 0, 0, 0, 0, 0),         (1, "NYC", "2.00", 0, "0.05", "-0.05", 1),
         (2, "CHI", "0.50", 0, "0.02", "-0.02", 1), (2, "NYC", "2.00", 0, "0.05", "-0.05", 1),
-        (3, "CHI", "0.50", 0, "0.02", "-0.02", 1), (3, "NYC", "2.00", 0, "0.05", "-0.05", 1)])
-    report("9a: each underlying carries only its own numbers", actual == want,
+        (3, "CHI", "0.50", 0, "0.02", "-0.02", 1), (3, "NYC", "2.00", 0, "0.05", "-0.05", 1)]
+    for day in range(4, 31):
+        want_rows.append((day, "CHI", "0.50", 0, "0.02", "-0.02", 1))
+        want_rows.append((day, "NYC", "2.00", 0, "0.05", "-0.05", 1))
+    want = want_keyed(want_rows)
+    report("9a: each underlying carries only its own numbers, 06-01 to 06-30", actual == want,
            f"actual {actual} expected {want}")
-    check_daily(cur, "9b: portfolio_daily of the two-underlying run", run4, [
+    daily_rows = [
         (1, "2.00", 0, "0.05", 0, "997.95", "2.00", 0, "0.05", "-0.05", 1),
         (2, "0.50", 0, "0.02", 0, "997.43", "2.50", 0, "0.07", "-0.07", 2),
-        (3, 0,      0, 0,      0, "997.43", "2.50", 0, "0.07", "-0.07", 2)])
+        (3, 0,      0, 0,      0, "997.43", "2.50", 0, "0.07", "-0.07", 2)]
+    for day in range(4, 31):
+        daily_rows.append((day, 0, 0, 0, 0, "997.43", "2.50", 0, "0.07", "-0.07", 2))
+    check_daily(cur, "9b: portfolio_daily of the two-underlying run, 06-01 to 06-30", run4,
+                daily_rows)
 
 
 def check_test8(cur, label):
@@ -354,11 +363,11 @@ def extra_boundaries(cur):
                 "own UTC day", run, [
         (10, "2.00", 0, "0.02", 0, "997.98", "2.00", 0, "0.02", "-0.02", 1),
         (11, "0.40", 0, "0.01", 0, "997.57", "2.40", 0, "0.03", "-0.03", 1),
-        (12, 0,      0, 0,      0, "997.57", "2.40", 0, "0.03", "-0.03", 1)])
+        *[(d, 0, 0, 0, 0, "997.57", "2.40", 0, "0.03", "-0.03", 1) for d in range(12, 31)]])
     actual = [(r[0], r[2]) for r in read_markets(cur, run)]
-    report("EXTRA boundaries: market net_units 4, 5, 5",
-           actual == [(date(2026, 6, 10), 4), (date(2026, 6, 11), 5), (date(2026, 6, 12), 5)],
-           f"actual {actual}")
+    want = [(date(2026, 6, 10), 4)] + [(date(2026, 6, d), 5) for d in range(11, 31)]
+    report("EXTRA boundaries: market net_units 4, then 5 every day to 06-30",
+           actual == want, f"actual {actual}")
 
 
 def extra_all_before_start(cur):
@@ -415,13 +424,18 @@ def extra_two_events(cur):
     fill(cur, run, "D", "yes", "buy", 1, "0.50", "0.01", ts(21, 11))      # CHI
     check_daily(cur, "EXTRA several markets in two NYC events plus CHI: portfolio_daily", run, [
         (20, "2.20", 0, "0.05", 0, "997.75", "2.20", 0, "0.05", "-0.05", 2),
-        (21, "1.50", 0, "0.05", 0, "996.20", "3.70", 0, "0.10", "-0.10", 4)])
+        (21, "1.50", 0, "0.05", 0, "996.20", "3.70", 0, "0.10", "-0.10", 4),
+        *[(d, 0, 0, 0, 0, "996.20", "3.70", 0, "0.10", "-0.10", 4) for d in range(22, 31)]])
     actual = read_underlying(cur, run)
-    want = want_keyed([
+    want_rows = [
         (20, "CHI", 0, 0, 0, 0, 0),
         (20, "NYC", "2.20", 0, "0.05", "-0.05", 2),
         (21, "CHI", "0.50", 0, "0.01", "-0.01", 1),
-        (21, "NYC", "3.20", 0, "0.09", "-0.09", 3)])
+        (21, "NYC", "3.20", 0, "0.09", "-0.09", 3)]
+    for day in range(22, 31):
+        want_rows.append((day, "CHI", "0.50", 0, "0.01", "-0.01", 1))
+        want_rows.append((day, "NYC", "3.20", 0, "0.09", "-0.09", 3))
+    want = want_keyed(want_rows)
     report("EXTRA two NYC events sum into one NYC row; CHI separate", actual == want,
            f"actual {actual} expected {want}")
 
@@ -432,9 +446,11 @@ def extra_fractions(cur):
     fill(cur, run, "A", "yes", "sell", "1.0", "0.50", "0.01", ts(23, 10))
     check_daily(cur, "EXTRA fractional quantities: portfolio_daily", run, [
         (22, "0.825", 0,      "0.02", 0, "99.155", "0.825", 0,      "0.02", "-0.02", 1),
-        (23, 0,       "0.50", "0.01", 0, "99.645", "0.495", "0.17", "0.03", "0.14",  1)])
+        (23, 0,       "0.50", "0.01", 0, "99.645", "0.495", "0.17", "0.03", "0.14",  1),
+        *[(d, 0, 0, 0, 0, "99.645", "0.495", "0.17", "0.03", "0.14", 1) for d in range(24, 31)]])
     check_positions(cur, "EXTRA fractional quantities: position rows", run, [
-        (22, "A", "2.5", "0.825", "0.3300"), (23, "A", "1.5", "0.495", "0.3300")])
+        (22, "A", "2.5", "0.825", "0.3300"),
+        *[(d, "A", "1.5", "0.495", "0.3300") for d in range(23, 31)]])
 
 
 def extra_avg_cost_rounding(cur):
@@ -444,9 +460,11 @@ def extra_avg_cost_rounding(cur):
     fill(cur, run, "B", "no", "buy", 1, "0.40", "0.01", ts(24, 12))
     fill(cur, run, "B", "no", "buy", 2, "0.45", "0.01", ts(24, 13))
     check_positions(cur, "EXTRA avg_cost 1.30 / 3 rounds to 0.4333 for a long and a short", run, [
-        (24, "A", 3, "1.30", "0.4333"), (24, "B", -3, "1.30", "0.4333")])
+        *[row for d in range(24, 31)
+          for row in ((d, "A", 3, "1.30", "0.4333"), (d, "B", -3, "1.30", "0.4333"))]])
     check_daily(cur, "EXTRA avg_cost run: portfolio_daily", run, [
-        (24, "2.60", 0, "0.04", 0, "97.36", "2.60", 0, "0.04", "-0.04", 2)])
+        (24, "2.60", 0, "0.04", 0, "97.36", "2.60", 0, "0.04", "-0.04", 2),
+        *[(d, 0, 0, 0, 0, "97.36", "2.60", 0, "0.04", "-0.04", 2) for d in range(25, 31)]])
 
 
 def extra_rejected_only(cur):
@@ -471,7 +489,8 @@ def extra_premium_split(cur):
     fill(cur, run, "B", "no", "buy", 5, "0.30", "0.08", ts(28, 12))
     check_daily(cur, "EXTRA buy and closing sell on one day: premium_paid and premium_received "
                 "split", run, [
-        (28, "5.50", "2.20", "0.32", 0, "996.38", "3.90", "0.60", "0.32", "0.28", 2)])
+        (28, "5.50", "2.20", "0.32", 0, "996.38", "3.90", "0.60", "0.32", "0.28", 2),
+        *[(d, 0, 0, 0, 0, "996.38", "3.90", "0.60", "0.32", "0.28", 2) for d in (29, 30)]])
 
 
 def extra_flip(cur):
@@ -480,8 +499,10 @@ def extra_flip(cur):
     fill(cur, run, "A", "yes", "sell", 5, "0.70", "0.02", ts(29, 11))   # closes 2, opens short 3
     check_daily(cur, "EXTRA a sell that flips long to short: net cash of the flip is premium "
                 "received", run, [
-        (29, "1.00", "0.50", "0.03", 0, "49.47", "0.90", "0.40", "0.03", "0.37", 1)])
-    check_positions(cur, "EXTRA flip: short 3 YES costs 0.90", run, [(29, "A", -3, "0.90", "0.3000")])
+        (29, "1.00", "0.50", "0.03", 0, "49.47", "0.90", "0.40", "0.03", "0.37", 1),
+        (30, 0, 0, 0, 0, "49.47", "0.90", "0.40", "0.03", "0.37", 1)])
+    check_positions(cur, "EXTRA flip: short 3 YES costs 0.90", run, [
+        (29, "A", -3, "0.90", "0.3000"), (30, "A", -3, "0.90", "0.3000")])
 
 
 def extra_global(cur):
