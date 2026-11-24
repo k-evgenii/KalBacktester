@@ -9,6 +9,7 @@ dependencies = [
     "numba>=0.67.0",
     "numpy>=2.5.3",
     "pandas>=3.0.6",
+    "polars>=2.1.0",
     "psycopg[binary]>=3.3.9",
     "pyarrow>=25.0.1",
     "scipy>=1.18.1",

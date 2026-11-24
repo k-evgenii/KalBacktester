@@ -16,7 +16,7 @@ def read_password():
     raise RuntimeError("POSTGRES_PASSWORD not found in the environment or .env")
 
 
-def connect():
+def connect(dbname="kalbt"):
     return psycopg.connect(
-        host="127.0.0.1", port=5433, dbname="kalbt", user="kalbt", password=read_password()
+        host="127.0.0.1", port=5433, dbname=dbname, user="kalbt", password=read_password()
     )
