@@ -76,13 +76,21 @@ use the pointers below only when needed.
 - **Saved runs in live:** 31 (B014 hand-written intents, NY) and 32 (forecast_favourite, NY 21 days).
 - **Resume the pull later:** `uv run python -m ingest.backfill` (skips loaded weeks; about 1.3 min per
   week), then run it once more as a retry pass. The user wanted an evening cron job; that is **not
-  set up yet** (planned as A026: `scripts/evening_backfill.sh` with flock and a log, plus a one-off
+  set up yet** (planned as A027: `scripts/evening_backfill.sh` with flock and a log, plus a one-off
   crontab entry; cron may need `sudo service cron start`).
 - **Pinned backup of this state:** `backups/pinned/20261124T154545Z_pause-backfill.dump`.
 - **Open data items:**
   - KXHIGHLAX 2026-10-19..25 is blocked: Kalshi's `expiration_value` for 22 Oct is the text
     "70° to 71°". The user hasn't decided whether to leave it as a gap.
   - KXHIGHTEWR 2026-08-24..30: Kalshi has no markets on 24–25 Aug.
+
+## 5b. Last full test pass (2026-11-24 ~16:00 UTC): 34 of 36 suites green
+Two red, both **tests that predate the backfill** (code is fine). Fix them first, as a small unit A026:
+- `tests/ingest/check_any_series.py` 4a–4c, 5c query every KXHIGHCHI event; they must be scoped to
+  2026-11-16..22 (Chicago now has 13 weeks).
+- `tests/ingest/check_backfill.py` 3e expects exactly one `*_before-backfill-KXHIGHMIA.dump`; the full run
+  took a second one → "at least one".
+(The evening-cron script then becomes A027.)
 
 ## 6. THE NEXT GOAL (user, 2026-11-24): a working backtester with analytics and a visualiser
 The user's words: there is no visualiser of the backtester; there are no P&L, Sharpe and VaR layers and
