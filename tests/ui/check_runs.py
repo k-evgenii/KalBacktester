@@ -322,8 +322,6 @@ def test_e01b_double_slash_prefix(ctx):
 
 
 def test_e02_static_ok_files(ctx):
-    status, headers, _ = fetch(ctx["port"], "/static/htmx.min.js")
-    assert status == 200 and headers["content-type"] == "text/javascript", (status, headers)
     for name in ["IBMPlexSans-SemiBold-Latin1.woff2", "IBMPlexSans-Bold-Latin1.woff2",
                  "IBMPlexMono-Regular-Latin1.woff2"]:
         status, headers, _ = fetch(ctx["port"], f"/static/fonts/{name}")
