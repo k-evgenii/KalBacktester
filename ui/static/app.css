@@ -119,3 +119,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .t-settled { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 3; }
 .t-axis { fill: var(--muted); font: 11px var(--mono); }
 td.hit { font-weight: 700; }
+
+.cov-grid td { text-align: center; padding: 4px; }
+.cov-grid a { text-decoration: none; }
+.cov-grid .chip { font-size: 11px; }

@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from db.connect import connect
-from ui import markets, portfolio, runs, weather
+from ui import coverage, markets, portfolio, runs, weather
 from ui.layout import esc, page
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -78,7 +78,7 @@ def make_server(port, dbname):
             city_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})", path)
             day_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})/(\d{4}-\d{2}-\d{2})", path)
             weather_match = re.fullmatch(r"/markets/([A-Z0-9_]{1,40})/(\d{4}-\d{2}-\d{2})/weather", path)
-            if (path not in ("/runs", "/markets") and not run_match and not portfolio_match
+            if (path not in ("/runs", "/markets", "/coverage") and not run_match and not portfolio_match
                     and not city_match and not day_match and not weather_match):
                 self.send_html(404, not_found_page())
                 return
@@ -98,6 +98,8 @@ def make_server(port, dbname):
                     text = markets.day_page(conn, day_match.group(1), event_date)
                 elif city_match:
                     text = markets.days_page(conn, city_match.group(1))
+                elif path == "/coverage":
+                    text = coverage.coverage_page(conn)
                 elif path == "/markets":
                     text = markets.cities_page(conn)
                 elif portfolio_match:
