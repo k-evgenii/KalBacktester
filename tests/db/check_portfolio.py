@@ -2,6 +2,7 @@
 
 Run: PYTHONPATH=. uv run python tests/db/check_portfolio.py
 """
+import os
 import sys
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -15,7 +16,7 @@ from db.connect import read_password
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA_SQL = (ROOT / "db" / "schema.sql").read_text()
 PORTFOLIO_SQL = (ROOT / "db" / "portfolio.sql").read_text()
-TEST_DB = "kalbt_portfolio_test"
+TEST_DB = f"kalbt_portfolio_test_{os.getpid()}"
 FEE_PARAMS = {"fee_rate": "0.07"}
 
 failures = []

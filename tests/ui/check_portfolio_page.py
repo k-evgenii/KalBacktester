@@ -12,8 +12,6 @@ import html
 import http.client
 import os
 import re
-import subprocess
-import sys
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -32,8 +30,8 @@ from ui.serve import make_server
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA = ROOT / "db" / "schema.sql"
 PORTFOLIO = ROOT / "db" / "portfolio.sql"
-DB = "kalbt_ui_portfolio_test"
-BARE_DB = "kalbt_ui_portfolio_test_bare"
+DB = f"kalbt_ui_portfolio_test_{os.getpid()}"
+BARE_DB = f"{DB}_bare"
 LIVE_TABLES = ["run", "order_intent", "order_outcome"]
 D = Decimal
 
@@ -394,11 +392,6 @@ def test_11_link_and_c05(ctx):
     assert f'href="/runs/{run_id}/portfolio"' in body, "no link"
     heading = re.search(r"<h2>Portfolio check.*?</h2>", body, flags=re.DOTALL)
     assert heading and f'href="/runs/{run_id}/portfolio"' in heading.group(0), "link not in the heading"
-    env = {**os.environ, "PYTHONPATH": str(ROOT)}
-    result = subprocess.run([sys.executable, str(ROOT / "tests" / "ui" / "check_runs.py")], cwd=ROOT,
-                            env=env, capture_output=True, text=True, timeout=600, check=False)
-    assert result.returncode == 0, result.stdout[-1500:] + result.stderr[-1500:]
-    assert "[FAIL]" not in result.stdout
 
 
 def test_12_escaping(ctx):

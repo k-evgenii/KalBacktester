@@ -7,6 +7,7 @@ end, even on failure. The live database is only read: SELECT row counts and pg_v
 
 Run from the repo root: PYTHONPATH=. uv run python tests/portfolio/check_check_run.py
 """
+import os
 import subprocess
 import traceback
 from datetime import date
@@ -30,8 +31,8 @@ from tests.recon.check_check_run import (
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA = ROOT / "db" / "schema.sql"
 PORTFOLIO = ROOT / "db" / "portfolio.sql"
-TEST_DB = "kalbt_portfolio_run_test"
-BARE_DB = "kalbt_portfolio_run_test_bare"
+TEST_DB = f"kalbt_portfolio_run_test_{os.getpid()}"
+BARE_DB = f"{TEST_DB}_bare"
 TABLES = ["run", "order_intent", "order_outcome", "settlement", "position_snapshot"]
 D = Decimal
 M4 = "T-M4"   # extra market: settles three days after it closes

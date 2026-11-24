@@ -8,6 +8,7 @@ Run from the repo root: PYTHONPATH=. uv run python tests/ui/check_runs.py
 """
 import html
 import http.client
+import os
 import re
 import threading
 import traceback
@@ -28,8 +29,8 @@ from ui.serve import make_server
 ROOT = Path(__file__).resolve().parent.parent.parent
 SCHEMA = ROOT / "db" / "schema.sql"
 PORTFOLIO = ROOT / "db" / "portfolio.sql"
-DB = "kalbt_ui_test"
-BARE_DB = "kalbt_ui_test_bare"
+DB = f"kalbt_ui_test_{os.getpid()}"
+BARE_DB = f"{DB}_bare"
 LIVE_TABLES = ["run", "order_intent", "order_outcome"]
 UGLY = '<img src=x onerror=alert(1)> & "q" \'s\''
 UGLY_ESCAPED = html.escape(UGLY)
