@@ -148,7 +148,8 @@ Each step is one command, runnable alone, reading only the database.
   Track A. Send the brief to A and B as INFO.
 - **C05+ UI build**: Track C owns `ui/`; A and B contribute screens through C's specs.
 
-## 7a. HOLD (2026-11-24)
+## 7a. HOLD (2026-11-24) — decided: one run per batch, new days only (user, in Track B's chat; unit B019)
+The hold stays until B019 is merged; afterwards each batch is: backup, run_all, reconcile.
 No `backtest.run_all` live runs after new data batches until the user decides between one run per
 batch (new days only) and one growing run per city: run_all's duplicate guard matches only the exact
 date range, so a rerun after more days load would write a new permanent run repeating run 32's days.
