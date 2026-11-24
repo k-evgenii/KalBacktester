@@ -645,8 +645,11 @@ def main():
         ctx = {"conn": conn, "port": port, "bare_port": bare_port, "live_before": live_before,
                "iso_conn": iso_conn, "iso_port": iso_port}
         ctx["clean"] = clean_run(conn)
+        conn.commit()
         ctx["bare_clean"] = clean_run(bare_conn)
+        bare_conn.commit()
         ctx["iso_run"] = clean_run(iso_conn)
+        iso_conn.commit()
 
         run_test("01 tiles show the last day's cash, open cost, net P&L and fees", test_01_tiles, ctx)
         run_test("02 daily book: a row per day, in order, Cash matches", test_02_daily_book, ctx)

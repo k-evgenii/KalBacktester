@@ -119,6 +119,7 @@ def add_late_market(conn):
 
 def test_01_clean_run(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     ctx["clean"] = run_id
     results = check_run(conn, run_id)
     assert len(results) == 3, f"{len(results)} entries"
@@ -127,6 +128,7 @@ def test_01_clean_run(conn, ctx):
 
 def test_02_held_unsettled(conn, ctx):
     run_id = match_intents(conn, "held", {}, [intent(at(6, 1, 12, 0), M3, "yes", "buy", 3)])
+    conn.commit()
     assert snapshot_days(conn, run_id, M3) == [date(2026, 6, 1), date(2026, 6, 2)], \
         f"engine snapshot days {snapshot_days(conn, run_id, M3)}"
     expect_all_pass(conn, run_id)
@@ -138,6 +140,7 @@ def test_02_held_unsettled(conn, ctx):
 
 def test_03_snapshot_net_changed(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     ctx["tampered"] = run_id
     tamper(conn, "position_snapshot",
            "UPDATE position_snapshot SET net_units = 9 WHERE run_id = %s AND market_ticker = %s"
@@ -149,6 +152,7 @@ def test_03_snapshot_net_changed(conn, ctx):
 
 def test_04_snapshot_avg_cost_changed(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     tamper(conn, "position_snapshot",
            "UPDATE position_snapshot SET avg_cost = avg_cost + 0.01 WHERE run_id = %s"
            " AND market_ticker = %s AND as_of_date = '2026-06-01'", (run_id, M2))
@@ -158,6 +162,7 @@ def test_04_snapshot_avg_cost_changed(conn, ctx):
 
 def test_05_snapshot_deleted(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     tamper(conn, "position_snapshot",
            "DELETE FROM position_snapshot WHERE run_id = %s AND market_ticker = %s"
            " AND as_of_date = '2026-06-02'", (run_id, M3))
@@ -168,6 +173,7 @@ def test_05_snapshot_deleted(conn, ctx):
 
 def test_06_fee_changed(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     cur = conn.cursor()
     cur.execute("SELECT o.outcome_id FROM order_outcome o JOIN order_intent i USING (intent_id)"
                 " WHERE i.run_id = %s AND i.market_ticker = %s AND o.outcome = 'filled'"
@@ -183,6 +189,7 @@ def test_06_fee_changed(conn, ctx):
 
 def test_07_settlement_net_changed(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     tamper(conn, "settlement",
            "UPDATE settlement SET net_units = 9 WHERE run_id = %s AND market_ticker = %s",
            (run_id, M1))
@@ -201,6 +208,7 @@ def test_07_settlement_net_changed(conn, ctx):
 
 def test_08_settlement_payout_changed(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     tamper(conn, "settlement",
            "UPDATE settlement SET payout = 9 WHERE run_id = %s AND market_ticker = %s",
            (run_id, M1))
@@ -264,6 +272,7 @@ def test_x01_no_position_to_settlement(conn, ctx):
     run_id = match_intents(conn, "no", {}, [
         intent(at(6, 1, 2, 0), M2, "no", "buy", 5),
         intent(at(6, 1, 10, 0), M1, "no", "buy", 5)])
+    conn.commit()
     cur = conn.cursor()
     cur.execute("SELECT market_ticker, net_units, avg_cost FROM position_snapshot WHERE run_id = %s"
                 " ORDER BY 1, as_of_date", (run_id,))
@@ -279,6 +288,7 @@ def test_x02_closed_to_flat(conn, ctx):
     run_id = match_intents(conn, "flat", {}, [
         intent(at(6, 1, 10, 0), M1, "yes", "buy", 5),
         intent(at(6, 1, 10, 10), M1, "yes", "sell", 5)])
+    conn.commit()
     cur = conn.cursor()
     cur.execute("SELECT count(*) FROM settlement WHERE run_id = %s", (run_id,))
     n_settlements = cur.fetchone()[0]
@@ -289,7 +299,9 @@ def test_x02_closed_to_flat(conn, ctx):
 
 def test_x03_two_runs_sharing_markets(conn, ctx):
     run_a = clean_run(conn)
+    conn.commit()
     run_b = clean_run(conn)
+    conn.commit()
     expect_all_pass(conn, run_a)
     expect_all_pass(conn, run_b)
     tamper(conn, "position_snapshot",
@@ -307,6 +319,7 @@ def test_x03_two_runs_sharing_markets(conn, ctx):
 
 def test_x04_settles_later_than_next_day(conn, ctx):
     run_id = match_intents(conn, "late", {}, [intent(at(6, 1, 12, 0), M4, "yes", "buy", 4)])
+    conn.commit()
     days = snapshot_days(conn, run_id, M4)
     assert days == [date(2026, 6, d) for d in (1, 2, 3, 4)], f"engine snapshot days {days}"
     expect_all_pass(conn, run_id)
@@ -317,6 +330,7 @@ def test_x04_settles_later_than_next_day(conn, ctx):
 
 def test_x05_planted_snapshot_without_position(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     plant_snapshot(conn, run_id, date(2026, 6, 3), M1, 1, D("0.45"))
     rows = expect_only_fail(conn, run_id, "snapshots")
     row = rows[0]
@@ -325,6 +339,7 @@ def test_x05_planted_snapshot_without_position(conn, ctx):
 
 def test_x06_run_without_fills(conn, ctx):
     run_id = match_intents(conn, "nofill", {}, [intent(at(6, 1, 12, 0), M3, "yes", "sell", 2)])
+    conn.commit()
     expect_all_pass(conn, run_id)
     code, lines = run_cli(run_id)
     assert code == 0 and lines == ["[PASS] fees", "[PASS] snapshots", "[PASS] settlements", "PASS"], \
@@ -344,6 +359,7 @@ def test_x07_run_without_intents(conn, ctx):
 
 def test_x08_output_format(conn, ctx):
     run_id = clean_run(conn)
+    conn.commit()
     for day in range(3, 15):    # 12 planted snapshots on days without a position
         plant_snapshot(conn, run_id, date(2026, 6, day), M1, 1, D("0.45"))
     code, lines = run_cli(run_id)
@@ -358,6 +374,7 @@ def test_x08_output_format(conn, ctx):
     assert "datetime.date(2026, 6, 3)" in shown[0], f"first row {shown[0]}"
     # fewer than 10 rows: all shown
     run_two = clean_run(conn)
+    conn.commit()
     plant_snapshot(conn, run_two, date(2026, 6, 3), M1, 1, D("0.45"))
     code, lines = run_cli(run_two)
     assert lines[1] == "[FAIL] snapshots (1 rows)" and len(lines) == 5 and code == 1, f"{lines}"
