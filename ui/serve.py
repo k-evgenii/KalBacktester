@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from db.connect import connect
-from ui import runs
+from ui import portfolio, runs
 from ui.layout import esc, page
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -73,13 +73,16 @@ def make_server(port, dbname):
 
         def send_db_page(self, path):
             run_match = re.fullmatch(r"/runs/(\d{1,18})", path)
-            if path != "/runs" and not run_match:
+            portfolio_match = re.fullmatch(r"/runs/(\d{1,18})/portfolio", path)
+            if path != "/runs" and not run_match and not portfolio_match:
                 self.send_html(404, not_found_page())
                 return
             conn = connect(dbname)
             try:
                 conn.read_only = True
-                if run_match:
+                if portfolio_match:
+                    text = portfolio.portfolio_page(conn, int(portfolio_match.group(1)))
+                elif run_match:
                     text = runs.run_page(conn, int(run_match.group(1)))
                 else:
                     text = runs.runs_page(conn)

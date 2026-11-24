@@ -3,7 +3,7 @@
 Throwaway database kalbt_portfolio_run_test (db/schema.sql, then db/portfolio.sql) filled with
 the fixture of tests/recon/check_check_run.py and engine runs made by match_intents. A second
 throwaway database kalbt_portfolio_run_test_bare holds only db/schema.sql. Both are dropped at the
-end, even on failure. The live database is only read: SELECT row counts and to_regclass.
+end, even on failure. The live database is only read: SELECT row counts and pg_views names.
 
 Run from the repo root: PYTHONPATH=. uv run python tests/portfolio/check_check_run.py
 """
@@ -237,17 +237,22 @@ def test_10_command_line(conn, ctx):
     assert code == 1 and lines[-1] == "FAIL", f"tampered: exit {code}, output {lines}"
 
 
-def test_11_live_untouched(live_before, ctx):
+def live_views(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT viewname FROM pg_views WHERE schemaname = 'public' "
+                "AND (viewname LIKE 'portfolio%' OR viewname = 'fee_check') ORDER BY viewname")
+    return [row[0] for row in cur.fetchall()]
+
+
+def test_11_live_untouched(live_before, views_before, ctx):
     live = connect()
     try:
         after = row_counts(live)
-        cur = live.cursor()
-        cur.execute("SELECT to_regclass('portfolio_snapshot_check')")
-        view = cur.fetchone()[0]
+        views_after = live_views(live)
     finally:
         live.close()
     assert after == live_before, f"live row counts: before {live_before}, after {after}"
-    assert view is None, f"portfolio_snapshot_check exists in the live database: {view}"
+    assert views_after == views_before, f"live portfolio views: before {views_before}, after {views_after}"
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +399,7 @@ def run_test(name, function, *args):
 def main():
     live_conn = connect()
     live_before = row_counts(live_conn)   # SELECT count(*) only
+    views_before = live_views(live_conn)
     live_conn.close()
     admin = connect()
     admin.autocommit = True
@@ -428,8 +434,8 @@ def main():
             run_test("10 command line exit codes and last line", test_10_command_line, conn, ctx)
         else:
             report("10 command line exit codes and last line", False, "test 1 or 3 did not run")
-        run_test("11 live database row counts unchanged, no portfolio_snapshot_check view",
-                 lambda c, x: test_11_live_untouched(live_before, x), conn, ctx)
+        run_test("11 live database row counts and portfolio views unchanged",
+                 lambda c, x: test_11_live_untouched(live_before, views_before, x), conn, ctx)
 
         run_test("EXTRA NO position held to settlement", test_x01_no_position_to_settlement, conn, ctx)
         run_test("EXTRA position closed to flat: no snapshot, no settlement", test_x02_closed_to_flat,
